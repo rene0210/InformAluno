@@ -1,0 +1,23 @@
+{
+  "name": "inform-aluno-api",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy --minify",
+    "cf-typegen": "wrangler types --env-interface CloudflareBindings",
+    "db:setup": "wrangler d1 execute inform-aluno-db --local --file schema.sql"
+  },
+  "dependencies": {
+    "bootstrap": "^5.3.8",
+    "hono": "^4.12.27",
+    "react": "18.3.1",
+    "react-bootstrap": "^2.10.10",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "wrangler": "^4.104.0"
+  }
+}

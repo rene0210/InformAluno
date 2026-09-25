@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>informaluno</title>
+    <!-- face-api carregado como script clássico (fora do pipeline do Vite).
+         Motivo: o Vite reescreve o método `async import(e,t)` do tfjs
+         embutido como se fosse import() dinâmico e quebra com SyntaxError. -->
+    <script src="/face-api.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

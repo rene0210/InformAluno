@@ -1,0 +1,18 @@
+name = "inform-aluno-api"
+main = "src/index.ts"
+compatibility_date = "2026-06-24"
+
+# ============================================================
+# DEPLOY EM PRODUÇÃO (primeira vez):
+#   1) npx wrangler d1 create inform-aluno-db
+#   2) cole o database_id gerado abaixo e descomente
+#   3) npm run deploy  (de inform-aluno-api)
+#   4) defina CORS_ORIGINS com a URL do front publicado:
+#      npx wrangler secret put CORS_ORIGINS
+#      (valor: https://seu-dominio.com)
+# ============================================================
+# database_id = "cole-aqui-o-id-gerado-pelo-wrangler-d1-create"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "inform-aluno-db"

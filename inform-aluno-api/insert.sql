@@ -1,0 +1,2 @@
+INSERT INTO responsaveis (id, nome, cpf) VALUES (1, 'Responsável Teste', '000.000.000-00');
+INSERT INTO alunos (nome, matricula, responsavel_id, foto_base64) VALUES ('Aluno Teste', '12345', 1, 'foto_teste_123');

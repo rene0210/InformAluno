@@ -1,0 +1,1 @@
+DELETE FROM responsavel_usuario WHERE responsavel_id IN (21, 22); DELETE FROM responsaveis WHERE id IN (21, 22); SELECT 'R' AS t, CAST(id AS TEXT) AS id, cpf, nome FROM responsaveis UNION ALL SELECT 'A', CAST(id AS TEXT), cpf, nome || ' | mat ' || matricula FROM alunos;

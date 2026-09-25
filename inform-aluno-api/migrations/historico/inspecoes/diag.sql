@@ -1,0 +1,1 @@
+SELECT 'responsavel' AS origem, CAST(id AS TEXT) AS id, nome, cpf FROM responsaveis WHERE cpf IN ('11122233344','55566677788') UNION ALL SELECT 'aluno', CAST(id AS TEXT), nome, matricula FROM alunos WHERE matricula = '990011' OR cpf = '99988877766';

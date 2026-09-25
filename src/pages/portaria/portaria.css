@@ -1,0 +1,233 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap');
+
+/* ======================================================= */
+/* CONFIGURAÇÃO DO CORPO E CAMADA DE FUNDO FIXA ISOLADA    */
+/* ======================================================= */
+body {
+  margin: 0;
+  background-color: #000000;
+}
+
+/* Esta div ignora o scroll e cobre 100% da tela em qualquer dispositivo */
+.portaria-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1; /* Fica atrás de absolutamente todo o conteúdo */
+  transition: background 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Os gradientes dinâmicos mudam de forma isolada nesta camada */
+.portaria-bg.status-aguardando {
+  background: linear-gradient(180deg, #000000 0%, #0f172a 100%) !important;
+}
+
+.portaria-bg.status-sucesso {
+  background: linear-gradient(180deg, #000000 0%, #051c10 50%, #285a3a 100%) !important;
+}
+
+.portaria-bg.status-erro {
+  background: linear-gradient(180deg, #000000 0%, #290707 50%, #7f1d1d 100%) !important;
+}
+
+/* O container principal fica transparente para expor o gradiente da div de baixo */
+.portaria-container {
+  min-height: 100vh;
+  background: transparent !important;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+}
+
+/* --- TOPO DA TELA (HEADER SEGURO) --- */
+.header-totem {
+  border-bottom: 2px solid #1e293b;
+  padding-bottom: 15px;
+}
+
+.app-title {
+  font-size: 2.2rem !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em !important;
+}
+
+/* ======================================================= */
+/* CARD DA CÂMERA (ESTILO TERMINAL BIOÉTRICO)               */
+/* ======================================================= */
+div.card.camera-card {
+  border: 3px solid #1e293b !important;
+  border-radius: 24px !important;
+  background: #000000 !important;
+  padding: 24px !important;
+  position: relative;
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Gatilhos de acendimento de bordas baseado no status */
+div.card.camera-card.sucesso {
+  border-color: #10b981 !important;
+  box-shadow: 0 0 30px rgba(16, 185, 129, 0.25), 0 20px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+div.card.camera-card.erro {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 30px rgba(239, 68, 68, 0.25), 0 20px 40px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Moldura interna da Webcam */
+.camera-wrapper {
+  border-radius: 16px !important;
+  overflow: hidden !important;
+  border: 1px solid #334155 !important;
+  background-color: #050505;
+}
+
+.camera-wrapper video {
+  width: 100% !important;
+  height: auto !important;
+  display: block;
+}
+
+/* Textos informativos de feedback dinâmico */
+.instrucao-camera, .msg-feedback {
+  color: #ffffff !important;
+  font-size: 1.1rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: color 0.4s ease;
+}
+
+.instrucao-camera.sucesso, .msg-feedback.sucesso { color: #10b981 !important; font-weight: 600; }
+.instrucao-camera.erro, .msg-feedback.erro { color: #f87171 !important; font-weight: 600; }
+
+/* ======================================================= */
+/* CONTROLE DE ALERTAS E COMPONENTES PREMIUM               */
+/* ======================================================= */
+.status-alert-premium {
+  border-radius: 16px !important;
+  padding: 16px !important;
+  font-size: 1rem !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
+}
+
+.status-alert-premium.alert-success, .status-alert-premium.alert-success * {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+  color: #10b981 !important;
+  border: 2px solid #10b981 !important;
+}
+
+.status-alert-premium.alert-danger, .status-alert-premium.alert-danger * {
+  background-color: rgba(239, 68, 68, 0.12) !important;
+  color: #ef4444 !important;
+  border: 2px solid #ef4444 !important;
+}
+
+.status-alert-premium.alert-dark, .status-alert-premium.alert-dark * {
+  background-color: #1e293b !important;
+  color: #94a3b8 !important;
+  border: 2px solid #334155 !important;
+}
+
+/* Botão de Confirmação Tático */
+.btn-checkin {
+  border-radius: 14px !important;
+  padding: 14px 28px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: none !important;
+  transition: all 0.2s ease !important;
+}
+
+/* ======================================================= */
+/* CARDS DE DADOS DA DIREITA                               */
+/* ======================================================= */
+div.card.totem-card {
+  border: 2px solid #1e293b !important;
+  border-radius: 24px !important;
+  background: #111827 !important;
+  padding: 24px !important;
+}
+
+.section-label {
+  font-size: 0.7rem !important;
+  text-transform: uppercase;
+  letter-spacing: 0.12em !important;
+  color: #64748b !important;
+  font-weight: 800 !important;
+  margin-bottom: 8px;
+}
+
+.student-name {
+  font-size: 2rem !important;
+  font-weight: 800 !important;
+  color: #ffffff !important;
+  letter-spacing: -0.02em !important;
+}
+
+.info-box {
+  background-color: #030712;
+  padding: 14px 20px;
+  border-radius: 16px;
+  border: 1px solid #1e293b;
+}
+
+.tech-code {
+  font-family: 'JetBrains Mono', monospace !important;
+  color: #38bdf8 !important;
+  font-weight: 600;
+}
+
+/* Linha de Responsáveis */
+.responsavel-row {
+  display: flex;
+  align-items: center;
+  background-color: #030712 !important;
+  border: 1px solid #1e293b !important;
+  border-radius: 14px !important;
+  padding: 12px 16px !important;
+}
+
+.responsavel-badge {
+  background-color: #1e293b;
+  color: #94a3b8;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+/* ======================================================= */
+/* MEDIA QUERIES PARA COMPACTAÇÃO EM DISPOSITIVOS MÓVEIS    */
+/* ======================================================= */
+@media (max-width: 991px) {
+  .app-title {
+    font-size: 1.75rem !important;
+  }
+  
+  .student-name {
+    font-size: 1.5rem !important;
+  }
+
+  div.card.camera-card, div.card.totem-card {
+    padding: 18px !important;
+  }
+
+  .instrucao-camera, .msg-feedback {
+    font-size: 1rem;
+  }
+
+  .nome-responsavel {
+    font-size: 0.9rem;
+  }
+}

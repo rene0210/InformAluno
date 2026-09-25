@@ -1,0 +1,1 @@
+DELETE FROM responsaveis WHERE id IN (39, 46, 49) AND NOT EXISTS (SELECT 1 FROM alunos WHERE responsavel_id = 39 OR responsavel2_id = 39 OR responsavel3_id = 39 OR responsavel_id = 46 OR responsavel2_id = 46 OR responsavel3_id = 46 OR responsavel_id = 49 OR responsavel2_id = 49 OR responsavel3_id = 49); SELECT COUNT(*) AS responsaveis FROM responsaveis;

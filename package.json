@@ -1,0 +1,35 @@
+{
+  "name": "informaluno",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5173 --strictPort",
+    "api": "npm --prefix inform-aluno-api run dev",
+    "check": "tsc -b && tsc -p inform-aluno-api/tsconfig.json --noEmit && tsc -p inform-aluno-api/src/components/tsconfig.json --noEmit && oxlint",
+    "verify": "npm run check && powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verificar-dev.ps1 && npm run smoke",
+    "smoke": "node scripts/smoke/run-all.mjs",
+    "db:backup": "node scripts/db-backup.mjs",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vladmandic/face-api": "^1.7.15",
+    "bootstrap": "^5.3.8",
+    "react": "^18.3.1",
+    "react-bootstrap": "^2.10.10",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.6",
+    "react-webcam": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^6.0.2",
+    "oxlint": "^1.69.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.1.0"
+  }
+}

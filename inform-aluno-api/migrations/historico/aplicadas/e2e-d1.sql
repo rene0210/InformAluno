@@ -1,0 +1,1 @@
+DELETE FROM autorizacoes_temporarias WHERE aluno_id IN (59,60,61);
