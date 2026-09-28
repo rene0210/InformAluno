@@ -15,7 +15,7 @@ import {
 } from "react-bootstrap";
 import Webcam from "react-webcam";
 import { useNavigate } from "react-router-dom";
-import { AtestadoBotao } from "../atestado/atestado";
+import { AnotacoesLista } from "../../components/anotacoes";
 import { ChatPainel } from "../chat/chat";
 import "../cadastro/Cadastro.css";
 
@@ -369,7 +369,13 @@ export const ProfessorDashboard: React.FC = () => {
 
   // Feed global de anotações (professores e pais), mais recente primeiro
   const listaAnotacoes = alunos
-    .flatMap((al) => al.acompanhamentos.map((ac) => ({ ...ac, aluno_nome: al.nome })))
+    .flatMap((al) =>
+      al.acompanhamentos.map((ac) => ({
+        ...ac,
+        aluno_nome: al.nome,
+        matricula: al.matricula,
+      }))
+    )
     .sort((a, b) => {
       if (a.criado_em !== b.criado_em) return a.criado_em < b.criado_em ? 1 : -1;
       return b.id - a.id;
@@ -709,47 +715,11 @@ export const ProfessorDashboard: React.FC = () => {
                   <Card.Header className="bg-white fw-bold fs-6 py-3 border-bottom">
                     📋 Acompanhamentos (professores e responsáveis)
                   </Card.Header>
-                  <Card.Body style={{ maxHeight: "420px", overflowY: "auto" }}>
-                    {listaAnotacoes.length === 0 ? (
-                      <p className="text-muted mb-0">
-                        Nenhum acompanhamento registrado ainda.
-                      </p>
-                    ) : (
-                      listaAnotacoes.map((ac) => (
-                        <div key={ac.id} className="border-bottom py-3">
-                          <div className="d-flex justify-content-between align-items-center flex-wrap gap-1">
-                            <div>
-                              <Badge
-                                bg={
-                                  ac.papel === "PROFESSOR"
-                                    ? "primary"
-                                    : ac.papel === "RESPONSAVEL"
-                                    ? "warning"
-                                    : "secondary"
-                                }
-                                text={ac.papel === "RESPONSAVEL" ? "dark" : undefined}
-                              >
-                                {ac.papel}
-                              </Badge>
-                              <span className="fw-semibold ms-2">{ac.autor_nome}</span>
-                              <span className="text-muted ms-2 small">
-                                sobre {ac.aluno_nome}
-                              </span>
-                            </div>
-                            <small className="text-muted">{ac.criado_em.slice(0, 16)}</small>
-                          </div>
-                          <div className="mt-1">{ac.texto}</div>
-                          {ac.atestado_base64 && (
-                            <div className="mt-1">
-                              <AtestadoBotao
-                                atestado={ac.atestado_base64}
-                                nome={ac.atestado_nome}
-                              />
-                            </div>
-                          )}
-                        </div>
-                      ))
-                    )}
+                  <Card.Body>
+                    <AnotacoesLista
+                      itens={listaAnotacoes}
+                      mensagemVazia="Nenhum acompanhamento registrado ainda."
+                    />
                   </Card.Body>
                 </Card>
               </Col>

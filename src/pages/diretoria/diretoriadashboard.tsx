@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Container, Row, Col, Card, Table, Badge, Button, Navbar, Nav, Collapse, Form, Modal } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
-import { AtestadoBotao } from "../atestado/atestado";
+import { AnotacoesLista } from "../../components/anotacoes";
 import { ChatPainel } from "../chat/chat";
 import { finalizarSessao } from "../../components/sessao";
 import "../cadastro/Cadastro.css";
@@ -678,61 +678,15 @@ export const DiretoriaDashboard: React.FC = () => {
             </span>
           </Card.Header>
           <Collapse in={expandido.anotacoes}>
-            <Card.Body className="p-0">
-              <Table hover responsive className="m-0 align-middle">
-                <thead className="table-light">
-                  <tr>
-                    <th>Data</th>
-                    <th>Aluno</th>
-                    <th>Autor</th>
-                    <th>Perfil</th>
-                    <th>Anotação</th>
-                    <th>Anexo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {anotacoesVisiveis.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="text-center py-4 text-muted">
-                        {msgVazia(
-                          `Nenhum resultado para “${busca.trim()}”.`,
-                          "Nenhuma anotação registrada ainda."
-                        )}
-                      </td>
-                    </tr>
-                  ) : (
-                    cortar("anotacoes", anotacoesVisiveis).map((anot) => (
-                      <tr key={anot.id}>
-                        <td className="text-muted small text-nowrap">
-                          {anot.criado_em.slice(0, 16)}
-                        </td>
-                        <td className="fw-semibold">
-                          {anot.aluno_nome}{" "}
-                          <span className="text-muted fw-normal small">
-                            ({anot.matricula})
-                          </span>
-                        </td>
-                        <td>{anot.autor_nome}</td>
-                        <td>
-                          <Badge
-                            bg={anot.papel === "PROFESSOR" ? "primary" : "warning"}
-                            text={anot.papel === "PROFESSOR" ? undefined : "dark"}
-                          >
-                            {anot.papel}
-                          </Badge>
-                        </td>
-                        <td>{anot.texto}</td>
-                        <td>
-                          <AtestadoBotao
-                            atestado={anot.atestado_base64}
-                            nome={anot.atestado_nome}
-                          />
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </Table>
+            <Card.Body>
+              <AnotacoesLista
+                itens={anotacoesVisiveis}
+                limite={limites.anotacoes ?? 10}
+                mensagemVazia={msgVazia(
+                  `Nenhum resultado para “${busca.trim()}”.`,
+                  "Nenhuma anotação registrada ainda."
+                )}
+              />
             </Card.Body>
           </Collapse>
         </Card>

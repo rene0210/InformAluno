@@ -410,6 +410,51 @@ body {
   }
 }
 
+/* ============================================================
+   ANOTAÇÕES DE RESPONSÁVEIS & PROFESSORES (src/components/anotacoes.tsx)
+   Mesma cara da lista de contatos do chat — reaproveita chat-busca,
+   chat-contato e chat-avatar — só que em largura cheia e com o texto
+   da anotação quebrando linha em vez de virar prévia de 1 linha.
+   ============================================================ */
+.anotacoes-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 460px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+/* O card só lista: não há seleção/conversa por trás */
+.anotacoes-contato {
+  cursor: default;
+}
+
+.anotacoes-nome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Nome do autor mantém as reticências; o badge de perfil não encolhe */
+.anotacoes-autor {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anotacoes-nome .badge {
+  flex-shrink: 0;
+}
+
+.anotacoes-texto {
+  font-size: 0.8rem;
+  color: #334155;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* Coluna da conversa (direita) */
 .chat-thread {
   flex: 1 1 320px;
