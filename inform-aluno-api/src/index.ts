@@ -1933,6 +1933,69 @@ app.put(
         const pertence = alvo === "pai" ? aluno.responsavel_id : aluno.responsavel2_id;
         if (pertence !== responsavelId) return null;
 
+        // Remoção pedida no modal (🗑): desvincula o responsável deste aluno.
+        // O estado é relido do banco para uma remoção no mesmo request não
+        // enxergar os valores antigos (ex.: tirar os dois de uma vez).
+        if (campos.remover === true) {
+          const estado = await c.env.DB.prepare(
+            "SELECT responsavel_id, responsavel2_id FROM alunos WHERE id = ?"
+          )
+            .bind(aluno.id)
+            .first<{ responsavel_id: number | null; responsavel2_id: number | null }>();
+          if (!estado) return "Aluno não encontrado.";
+
+          const pertenceAgora =
+            alvo === "pai" ? estado.responsavel_id : estado.responsavel2_id;
+          if (pertenceAgora !== responsavelId) return null;
+
+          const outroAgora =
+            alvo === "pai" ? estado.responsavel2_id : estado.responsavel_id;
+          if (!outroAgora) {
+            return "O aluno precisa manter ao menos um responsável.";
+          }
+
+          const removido = await c.env.DB.prepare(
+            "SELECT id, nome FROM responsaveis WHERE id = ?"
+          )
+            .bind(responsavelId)
+            .first<{ id: number; nome: string }>();
+          if (!removido) return null;
+
+          if (alvo === "pai") {
+            // O 2º responsável assume a vaga principal (mesmo critério
+            // do pré-cadastro quando só existe um)
+            await c.env.DB.prepare(
+              "UPDATE alunos SET responsavel_id = responsavel2_id, responsavel2_id = NULL WHERE id = ?"
+            )
+              .bind(aluno.id)
+              .run();
+          } else {
+            await c.env.DB.prepare(
+              "UPDATE alunos SET responsavel2_id = NULL WHERE id = ?"
+            )
+              .bind(aluno.id)
+              .run();
+          }
+
+          // Apaga o cadastro do responsável só quando nenhum outro aluno
+          // (nem o 3º responsável) usar essa mesma pessoa
+          const aindaUsado = await c.env.DB.prepare(
+            `SELECT 1 FROM alunos
+              WHERE responsavel_id = ? OR responsavel2_id = ? OR responsavel3_id = ?
+              LIMIT 1`
+          )
+            .bind(responsavelId, responsavelId, responsavelId)
+            .first();
+          if (!aindaUsado) {
+            await c.env.DB.prepare("DELETE FROM responsaveis WHERE id = ?")
+              .bind(responsavelId)
+              .run();
+          }
+
+          alteracoes.push(`Removido ${rotulo}: "${removido.nome}"`);
+          return null;
+        }
+
         const atual = await c.env.DB.prepare(
           "SELECT id, nome, telefone FROM responsaveis WHERE id = ?"
         )

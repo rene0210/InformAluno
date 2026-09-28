@@ -91,6 +91,8 @@ export const Cadastro: React.FC = () => {
   const [editFotoMae, setEditFotoMae] = useState<string | null>(null);
   const [editAlvoFoto, setEditAlvoFoto] = useState<"pai" | "mae" | null>(null);
   const [editModoFoto, setEditModoFoto] = useState<"file" | "camera">("file");
+  // Lado marcado para remoção pelo botão 🗑 (efetivado no "Salvar alterações")
+  const [editRemovido, setEditRemovido] = useState<"pai" | "mae" | null>(null);
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [erroEdicao, setErroEdicao] = useState<string | null>(null);
   const [okEdicao, setOkEdicao] = useState<string | null>(null);
@@ -353,6 +355,7 @@ export const Cadastro: React.FC = () => {
     setEditFotoMae(f.mae_foto || null);
     setEditAlvoFoto(null);
     setEditModoFoto("file");
+    setEditRemovido(null);
     setErroEdicao(null);
     setOkEdicao(null);
   };
@@ -361,16 +364,18 @@ export const Cadastro: React.FC = () => {
     pararCamera(videoEditRef);
     setEditando(null);
     setEditAlvoFoto(null);
+    setEditRemovido(null);
   };
 
   // Envia a edição para a API — cada alteração dispara e-mail aos pais
   const salvarEdicao = async () => {
     if (!editando || salvandoEdicao) return;
-    if (editando.pai_id && !editNomePai.trim()) {
+    // Lado marcado com 🗑 não valida nome/telefone: ele será removido
+    if (editando.pai_id && editRemovido !== "pai" && !editNomePai.trim()) {
       setErroEdicao("Informe o nome do responsável.");
       return;
     }
-    if (editando.mae_id && !editNomeMae.trim()) {
+    if (editando.mae_id && editRemovido !== "mae" && !editNomeMae.trim()) {
       setErroEdicao("Informe o nome do 2º responsável.");
       return;
     }
@@ -381,23 +386,32 @@ export const Cadastro: React.FC = () => {
     try {
       const payload: Record<string, unknown> = { aluno_id: editando.id };
       if (editando.pai_id) {
-        const pai: Record<string, unknown> = {
-          id: editando.pai_id,
-          nome: editNomePai.trim(),
-          telefone: editTelPai.trim(),
-        };
-        // Foto só vai quando o usuário trocou de fato
-        if (editFotoPai && editFotoPai !== editando.pai_foto) pai.foto = editFotoPai;
-        payload.pai = pai;
+        // Remoção marcada pelo 🗑 do bloco
+        payload.pai =
+          editRemovido === "pai"
+            ? { id: editando.pai_id, remover: true }
+            : {
+                id: editando.pai_id,
+                nome: editNomePai.trim(),
+                telefone: editTelPai.trim(),
+                // Foto só vai quando o usuário trocou de fato
+                ...(editFotoPai && editFotoPai !== editando.pai_foto
+                  ? { foto: editFotoPai }
+                  : {}),
+              };
       }
       if (editando.mae_id) {
-        const mae: Record<string, unknown> = {
-          id: editando.mae_id,
-          nome: editNomeMae.trim(),
-          telefone: editTelMae.trim(),
-        };
-        if (editFotoMae && editFotoMae !== editando.mae_foto) mae.foto = editFotoMae;
-        payload.mae = mae;
+        payload.mae =
+          editRemovido === "mae"
+            ? { id: editando.mae_id, remover: true }
+            : {
+                id: editando.mae_id,
+                nome: editNomeMae.trim(),
+                telefone: editTelMae.trim(),
+                ...(editFotoMae && editFotoMae !== editando.mae_foto
+                  ? { foto: editFotoMae }
+                  : {}),
+              };
       }
 
       const res = await fetch("http://127.0.0.1:8787/api/cadastro/responsaveis", {
@@ -415,20 +429,25 @@ export const Cadastro: React.FC = () => {
       }
 
       setOkEdicao(dados.message || "Dados atualizados!");
-      // Sincroniza os "originais" para uma eventual nova salvar
+      // Sincroniza os "originais" para uma eventual nova salvar — o lado
+      // removido pelo 🗑 sai do modal (id vira null, o bloco some)
       setEditando((prev) =>
         prev
           ? {
               ...prev,
-              pai: editNomePai.trim(),
-              pai_telefone: editTelPai.trim(),
-              pai_foto: editFotoPai,
-              mae: editNomeMae.trim(),
-              mae_telefone: editTelMae.trim(),
-              mae_foto: editFotoMae,
+              pai: editRemovido === "pai" ? "" : editNomePai.trim(),
+              pai_telefone: editRemovido === "pai" ? "" : editTelPai.trim(),
+              pai_foto: editRemovido === "pai" ? null : editFotoPai,
+              pai_id: editRemovido === "pai" ? null : prev.pai_id,
+              mae: editRemovido === "mae" ? "" : editNomeMae.trim(),
+              mae_telefone: editRemovido === "mae" ? "" : editTelMae.trim(),
+              mae_foto: editRemovido === "mae" ? null : editFotoMae,
+              mae_id: editRemovido === "mae" ? null : prev.mae_id,
             }
           : prev
       );
+      setEditRemovido(null);
+      setEditAlvoFoto(null);
       if (dados.alterado) {
         await carregarFilhos(); // recarrega os cartões com os dados novos
       }
@@ -449,11 +468,48 @@ export const Cadastro: React.FC = () => {
     const setFoto = lado === "pai" ? setEditFotoPai : setEditFotoMae;
     const rotulo = lado === "pai" ? "Responsável" : "2º Responsável";
     const ativo = editAlvoFoto === lado;
+    // 🗑 remoção: marcada aqui e efetivada em "Salvar alterações"
+    const removido = editRemovido === lado;
+    const outroId = lado === "pai" ? editando?.mae_id : editando?.pai_id;
+    const outroRemovido = editRemovido === (lado === "pai" ? "mae" : "pai");
+    // Só permite tirar este se o outro existe e não está também marcado
+    const podeRemover = Boolean(outroId) && !outroRemovido;
 
     return (
       <Card className="border h-100">
-        <Card.Header className="bg-white fw-bold">👤 {rotulo}</Card.Header>
+        <Card.Header className="bg-white fw-bold d-flex justify-content-between align-items-center gap-2">
+          <span>👤 {rotulo}</span>
+          <Button
+            size="sm"
+            variant={removido ? "outline-success" : "outline-danger"}
+            disabled={!removido && !podeRemover}
+            title={
+              removido
+                ? "Cancelar a remoção deste responsável"
+                : podeRemover
+                  ? `Remover o ${rotulo.toLowerCase()} deste aluno`
+                  : "O aluno precisa manter ao menos um responsável"
+            }
+            onClick={() => {
+              if (!removido) {
+                // Tira a câmera de cena antes de marcar a remoção
+                pararCamera(videoEditRef);
+                if (editAlvoFoto === lado) setEditAlvoFoto(null);
+              }
+              setEditRemovido(removido ? null : lado);
+            }}
+          >
+            {removido ? "↩ Restaurar" : "🗑 Remover"}
+          </Button>
+        </Card.Header>
         <Card.Body>
+          {removido && (
+            <Alert variant="warning" className="small py-2 mb-3">
+              <strong>{rotulo} será removido</strong> ao clicar em "💾 Salvar
+              alterações". Use "↩ Restaurar" para desfazer.
+            </Alert>
+          )}
+
           <Form.Group className="mb-3">
             <Form.Label className="form-label-custom">Nome Completo</Form.Label>
             <Form.Control
@@ -463,6 +519,7 @@ export const Cadastro: React.FC = () => {
               value={nome}
               onChange={(e) => setNome(e.target.value)}
               maxLength={120}
+              disabled={removido}
             />
           </Form.Group>
 
@@ -475,6 +532,7 @@ export const Cadastro: React.FC = () => {
               value={tel}
               onChange={(e) => setTel(e.target.value)}
               maxLength={30}
+              disabled={removido}
             />
           </Form.Group>
 
@@ -486,6 +544,7 @@ export const Cadastro: React.FC = () => {
             )}
           </div>
 
+          {!removido && (
           <div className="d-flex gap-2 justify-content-center mb-2">
             <Button
               size="sm"
@@ -499,8 +558,8 @@ export const Cadastro: React.FC = () => {
               {ativo ? "✕ Fechar" : "✏️ Trocar foto"}
             </Button>
           </div>
-
-          {ativo && (
+          )}
+          {!removido && ativo && (
             <div>
               <div className="d-flex gap-2 justify-content-center mb-2">
                 <Button

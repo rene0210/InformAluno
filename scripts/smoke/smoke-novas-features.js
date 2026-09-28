@@ -303,6 +303,49 @@ const main = async () => {
     `HTTP ${r.status}`
   );
 
+  // ---------- REMOÇÃO PELO 🗑 DO MODAL "EDITAR RESPONSÁVEL" ----------
+  // (idempotente: se a rodada anterior parou no meio, o 2º já pode estar fora)
+  if (meuFilho && meuFilho.mae_id) {
+    r = await putEdit(sessaoPai.token, {
+      aluno_id: meuFilho.id,
+      mae: { id: meuFilho.mae_id, remover: true },
+    });
+    check(
+      "PUT remover o 2º responsavel -> 200 alterado=true",
+      r.status === 200 && r.data && r.data.alterado === true,
+      JSON.stringify(r.data)
+    );
+  } else {
+    check("PUT remover o 2º responsavel -> 200 alterado=true", !!meuFilho, "2º ja removido");
+  }
+
+  filhos = await req("GET", "/api/cadastro/filhos", { token: sessaoPai.token });
+  meuFilho = (filhos.data.filhos || []).find((f) => f.matricula === "990207");
+  check(
+    "2º responsavel some do cartao apos remover",
+    !!meuFilho && !meuFilho.mae_id && !meuFilho.mae,
+    meuFilho ? `mae=${meuFilho.mae} mae_id=${meuFilho.mae_id}` : "sem filho"
+  );
+
+  r = await putEdit(sessaoPai.token, {
+    aluno_id: meuFilho.id,
+    pai: { id: meuFilho.pai_id, remover: true },
+  });
+  check(
+    "PUT remover o ultimo responsavel -> 400",
+    r.status === 400 && !!r.data && /manter ao menos/i.test(r.data.error || ""),
+    `HTTP ${r.status} ${r.data && r.data.error ? r.data.error : ""}`
+  );
+
+  // a remoção recusada não pode ter mexido no cadastro
+  filhos = await req("GET", "/api/cadastro/filhos", { token: sessaoPai.token });
+  meuFilho = (filhos.data.filhos || []).find((f) => f.matricula === "990207");
+  check(
+    "Ultimo responsavel continua no cartao",
+    !!meuFilho && !!meuFilho.pai_id && meuFilho.pai === "Smoke Pai Editado",
+    meuFilho ? `pai=${meuFilho.pai}` : "sem filho"
+  );
+
   // ============================================================
   // FEATURE B - DASHBOARD DO ALUNO
   // ============================================================
