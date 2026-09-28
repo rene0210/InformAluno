@@ -435,8 +435,110 @@ const main = async () => {
   r = await req("GET", "/api/professor/alunos", { token: sessaoGestor.token });
   check("GESTOR nao acessa rotas de professor -> 403", r.status === 403, `HTTP ${r.status}`);
 
+  // ============================================================
+  // FEATURE E - PRE-CADASTRO ACEITA 1 RESPONSAVEL (o outro e opcional)
+  // ============================================================
+  console.log("\n--- FEATURE E: cadastro com apenas 1 responsavel ---");
+  const FOTO_FAKE = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQ";
+
+  const acharAluno = async (matricula) => {
+    const lista = await req("GET", "/api/admin/alunos", { token: tokenAdmin });
+    const alunos = Array.isArray(lista.data) ? lista.data : [];
+    return alunos.find((a) => a.matricula === matricula) || null;
+  };
+
+  // Idempotencia: remove sobras de uma rodada anterior
+  for (const mat of ["990215", "990216", "990217"]) {
+    const antigo = await acharAluno(mat);
+    if (antigo) {
+      await req("DELETE", `/api/admin/alunos/${antigo.id}`, { token: tokenAdmin });
+    }
+  }
+
+  // (1) Só o 1º responsável -> 201
+  let r1 = await req("POST", "/api/cadastro", {
+    body: {
+      usuario_id: paiDemoUser.id,
+      nome: "Aluno Um Responsavel",
+      matricula: "990215",
+      serie: "7º Ano B",
+      cpfAluno: "99100002915",
+      responsavelNome: "Resp Unico Smoke",
+      cpf: "99100002901",
+      fotoResponsavel: FOTO_FAKE,
+      fotoAluno: FOTO_FAKE,
+    },
+  });
+  check("Cadastro com apenas 1 responsavel -> 201", r1.status === 201, `HTTP ${r1.status}`);
+  const alunoUm = await acharAluno("990215");
+  check(
+    "1 responsavel ocupa o slot principal",
+    !!alunoUm && !!alunoUm.pai_nome && !alunoUm.mae_nome,
+    alunoUm ? `pai=${alunoUm.pai_nome} mae=${alunoUm.mae_nome}` : "aluno nao encontrado"
+  );
+
+  // (2) Só o 2º responsável (1º removido na tela) -> promovido ao slot 1
+  let r2 = await req("POST", "/api/cadastro", {
+    body: {
+      usuario_id: paiDemoUser.id,
+      nome: "Aluno So Segundo Responsavel",
+      matricula: "990216",
+      serie: "7º Ano B",
+      cpfAluno: "99100002916",
+      responsavel2Nome: "Resp Promovido Smoke",
+      cpf2: "99100002902",
+      fotoResponsavel2: FOTO_FAKE,
+      fotoAluno: FOTO_FAKE,
+    },
+  });
+  check("Cadastro só com o 2º responsavel -> 201", r2.status === 201, `HTTP ${r2.status}`);
+  const alunoDois = await acharAluno("990216");
+  check(
+    "2º responsavel promovido ao slot principal",
+    !!alunoDois && !!alunoDois.pai_nome && !alunoDois.mae_nome,
+    alunoDois ? `pai=${alunoDois.pai_nome}` : "aluno nao encontrado"
+  );
+
+  // (3) Nenhum responsável -> 400
+  const r3 = await req("POST", "/api/cadastro", {
+    body: {
+      nome: "Aluno Sem Responsavel",
+      matricula: "990217",
+      serie: "7º Ano B",
+      cpfAluno: "99100002917",
+    },
+  });
+  check("Cadastro sem nenhum responsavel -> 400", r3.status === 400, `HTTP ${r3.status}`);
+  check(
+    "Mensagem cobra ao menos 1 responsavel",
+    !!(r3.data && /respons.vel/i.test(r3.data.error || "")),
+    r3.data && r3.data.error ? r3.data.error : "sem mensagem"
+  );
+
+  // (4) Convite de 3º liberado mesmo com 1 responsável
+  if (alunoUm && sessaoPaiDemo) {
+    const r4 = await req("POST", "/api/convite/gerar", {
+      token: sessaoPaiDemo.token,
+      body: { aluno_id: alunoUm.id },
+    });
+    check(
+      "Convite de 3º com aluno de 1 responsavel -> 201",
+      r4.status === 201,
+      `HTTP ${r4.status}`
+    );
+  } else {
+    check("Convite de 3º com aluno de 1 responsavel -> 201", false, "aluno/sessao ausente");
+  }
+
   // ---------- LIMPEZA: dados de teste descartaveis ----------
   console.log("\n--- LIMPEZA ---");
+  for (const mat of ["990215", "990216"]) {
+    const extra = await acharAluno(mat);
+    if (extra) {
+      const dl = await req("DELETE", `/api/admin/alunos/${extra.id}`, { token: tokenAdmin });
+      check(`Limpeza: aluno ${mat} removido`, dl.status === 200, `HTTP ${dl.status}`);
+    }
+  }
   const limpezaAluno = await req("DELETE", `/api/admin/alunos/${meuFilho.id}`, {
     token: tokenAdmin,
   });

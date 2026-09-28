@@ -121,7 +121,7 @@ export const CadastroConvidado: React.FC = () => {
           <p className="text-muted">
             {mensagemSucesso ||
               (ehTerceiro
-                ? "O pai e a mãe receberam um e-mail para aprovar ou rejeitar a solicitação. Você será 3º responsável do aluno apenas após a aprovação."
+                ? "Os responsáveis receberam um e-mail para aprovar ou rejeitar a solicitação. Você será 3º responsável do aluno apenas após a aprovação."
                 : "O responsável pelo aluno foi notificado para dar a confirmação final. Apresente seu CPF na portaria da escola no momento da retirada.")}
           </p>
         </Card>
@@ -165,7 +165,7 @@ export const CadastroConvidado: React.FC = () => {
                   : ""}
                 <br />
                 <small>
-                  Ao enviar, o pai e a mãe receberão um e-mail para{" "}
+                  Ao enviar, os responsáveis receberão um e-mail para{" "}
                   <strong>aprovar ou rejeitar</strong> sua solicitação.
                 </small>
               </>
@@ -234,8 +234,8 @@ export const CadastroConvidado: React.FC = () => {
 
             <Button variant="success" type="submit" className="w-100 fw-bold py-2">
               {ehTerceiro
-                ? "📨 Enviar para Aprovação do Pai e da Mãe"
-                : "🔒 Enviar Dados para Aprovação do Pai"}
+                ? "📨 Enviar para Aprovação dos Responsáveis"
+                : "🔒 Enviar Dados para Aprovação do Responsável"}
             </Button>
           </Form>
         </Card.Body>

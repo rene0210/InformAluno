@@ -170,7 +170,7 @@ export const Portaria: React.FC = () => {
           resultado.movimento === "CHECKOUT" ? "saída (check-out)" : "entrada (check-in)";
         setDados((prev) => ({ ...prev, movimento: resultado.movimento ?? null }));
         setMensagem(
-          `🚐 Aluno registrado na van — ${rotulo}! Pais, secretaria e coordenação avisados.`
+          `🚐 Aluno registrado na van — ${rotulo}! Responsáveis, secretaria e coordenação avisados.`
         );
       } else {
         setMensagem("Aluno reconhecido, mas o registro na van falhou.");
@@ -306,11 +306,11 @@ export const Portaria: React.FC = () => {
           } else if (papel === "PAI" && melhorCandidato.pai_nome) {
             ehResponsavel = true;
             nomeIdentificado = melhorCandidato.pai_nome;
-            vinculo = "Pai";
+            vinculo = "Responsável";
           } else if (papel === "MAE" && melhorCandidato.mae_nome) {
             ehResponsavel = true;
             nomeIdentificado = melhorCandidato.mae_nome;
-            vinculo = "Mãe";
+            vinculo = "2º responsável";
           } else if (papel === "TERCEIRO" && melhorCandidato.terceiro_nome) {
             ehResponsavel = true;
             nomeIdentificado = melhorCandidato.terceiro_nome;

@@ -78,7 +78,7 @@ const ROLES_DISPONIVEIS = [
   { valor: "ALUNO", rotulo: "🎓 Aluno" },
   { valor: "PORTARIA", rotulo: "🛡️ Agente de Portaria" },
   { valor: "MOTORISTA", rotulo: "🚐 Motorista da Van" },
-  { valor: "RESPONSAVEL", rotulo: "👨‍👩‍👧 Pai / Responsável Legal" },
+  { valor: "RESPONSAVEL", rotulo: "👨‍👩‍👧 Responsável Legal" },
   { valor: "ADMIN", rotulo: "⚡ Administrador Master" },
 ];
 
@@ -335,7 +335,7 @@ export const AdminDashboard: React.FC = () => {
   const [modoEdicao, setModoEdicao] = useState<"file" | "camera">("file");
   const videoFotoRef = useRef<HTMLVideoElement | null>(null);
 
-  const rotuloAlvo: Record<AlvoFoto, string> = { aluno: "Aluno", pai: "Pai", mae: "Mãe" };
+  const rotuloAlvo: Record<AlvoFoto, string> = { aluno: "Aluno", pai: "Responsável", mae: "2º Responsável" };
 
   const pararCameraFoto = () => {
     const v = videoFotoRef.current;
@@ -669,7 +669,7 @@ export const AdminDashboard: React.FC = () => {
             <div>
               <h4 className="m-0 fw-bold fs-5">Alunos Cadastrados (Pré-Cadastros)</h4>
               <small className="opacity-75">
-                Registros da tela de cadastro — aluno e responsáveis (pai e mãe)
+                Registros da tela de cadastro — aluno e responsáveis
               </small>
             </div>
             <Badge bg="light" text="dark" className="fs-6 px-3 py-2">
@@ -689,8 +689,8 @@ export const AdminDashboard: React.FC = () => {
                     <th>ID</th>
                     <th>Aluno</th>
                     <th>Matrícula</th>
-                    <th>Pai</th>
-                    <th>Mãe</th>
+                    <th>Responsável</th>
+                    <th>2º Responsável</th>
                     <th>Status</th>
                     <th className="text-center">Ações</th>
                   </tr>
@@ -987,7 +987,7 @@ export const AdminDashboard: React.FC = () => {
               <strong>{alunoSelecionado.nome}</strong> (matrícula {alunoSelecionado.matricula})?
               <br />
               <small className="text-danger fw-bold">
-                O aluno e os responsáveis (pai e mãe) serão removidos e a portaria deixará de
+                O aluno e os responsáveis serão removidos e a portaria deixará de
                 identificá-los.
               </small>
             </p>

@@ -152,7 +152,7 @@ export const RegistroUsuario: React.FC = () => {
                   onChange={(e) => setRole(e.target.value)}
                 >
                   <option value="RESPONSAVEL">
-                    Pai / Mãe / Responsável Legal
+                    Responsável Legal
                   </option>
                   <option value="PORTARIA">Funcionário</option>
                   <option value="MOTORISTA">🚐 Motorista da Van</option>

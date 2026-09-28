@@ -275,6 +275,15 @@ body {
   padding-right: 2px;
 }
 
+/* Barra de pesquisa da lista de contatos (fixa no topo ao rolar) */
+.chat-busca {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #ffffff;
+  padding: 2px 0 6px;
+}
+
 /* A "barra" do aluno ou do professor na lista de contatos */
 .chat-contato {
   position: relative;

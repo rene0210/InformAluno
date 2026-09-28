@@ -78,7 +78,7 @@ export const SecretariaTela: React.FC = () => {
   const [modoEdicao, setModoEdicao] = useState<"file" | "camera">("file");
   const videoFotoRef = useRef<HTMLVideoElement | null>(null);
 
-  const rotuloAlvo: Record<AlvoFoto, string> = { aluno: "Aluno", pai: "Pai", mae: "Mãe" };
+  const rotuloAlvo: Record<AlvoFoto, string> = { aluno: "Aluno", pai: "Responsável", mae: "2º Responsável" };
 
   const authHeaders = (): Record<string, string> => ({
     "Content-Type": "application/json",

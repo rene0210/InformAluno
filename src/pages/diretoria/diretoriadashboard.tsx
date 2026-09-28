@@ -133,6 +133,10 @@ export const DiretoriaDashboard: React.FC = () => {
     chat: true,
   });
 
+  // Pesquisa global do painel: filtra aluno (nome/matrícula), turma/série e
+  // professor em todas as seções abaixo e nos modais de detalhe.
+  const [busca, setBusca] = useState("");
+
   // Quantas linhas cada tabela mostra (0 = todos)
   const [limites, setLimites] = useState<Record<string, number>>({
     serie: 10,
@@ -265,10 +269,78 @@ export const DiretoriaDashboard: React.FC = () => {
     </Button>
   );
 
+  // Compara sem acento/maiúscula ("João" acha "joao", "6º ANO" acha "6o ano")
+  const normalizar = (v: string): string =>
+    v
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  // Texto da pesquisa já normalizado (vazio = sem filtro ativo)
+  const termo = normalizar(busca.trim());
+  const filtrando = termo.length > 0;
+  const combina = (...campos: Array<string | null | undefined>): boolean =>
+    termo !== "" && campos.some((c) => normalizar(c || "").includes(termo));
+
+  // Mensagem de "lista vazia" distinta: sem registro x. sem resultado do filtro
+  const msgVazia = (filtrado: string, vazio: string): string =>
+    filtrando ? filtrado : vazio;
+
+  // Os nomes casados com a pesquisa, agrupados por série/turma — exibidos
+  // sob a turma na tabela "Alunos Presentes por Série" quando o filtro é nome.
+  const nomesCasadosPorSerie = new Map<string, string[]>();
+  if (filtrando) {
+    for (const aluno of detalhes.alunosPresentes) {
+      if (!combina(aluno.nome)) continue;
+      const turma = aluno.serie.trim() || "Sem série";
+      nomesCasadosPorSerie.set(turma, [
+        ...(nomesCasadosPorSerie.get(turma) || []),
+        aluno.nome,
+      ]);
+    }
+  }
+
+  // Série/turma visível: casa pela turma OU tem aluno casado pelo nome
+  const serieVisivel = filtrando
+    ? alunosPorSerie.filter(
+        (item) =>
+          combina(item.serie) ||
+          nomesCasadosPorSerie.has(item.serie.trim() || "Sem série")
+      )
+    : alunosPorSerie;
+
+  const professoresVisiveis = filtrando
+    ? professoresPresentes.filter((p) => combina(p.nome, p.materia))
+    : professoresPresentes;
+
+  const anotacoesVisiveis = filtrando
+    ? anotacoes.filter((a) => combina(a.aluno_nome, a.matricula, a.autor_nome, a.texto))
+    : anotacoes;
+
+  const logAcessosVisivel = filtrando
+    ? logAcessos.filter((a) => combina(a.usuario_nome, a.usuario_email, a.papel))
+    : logAcessos;
+
+  const logTerceirosVisivel = filtrando
+    ? logTerceiros.filter((t) => combina(t.aluno_nome, t.matricula, t.solicitante))
+    : logTerceiros;
+
+  const registrosVisiveis = filtrando
+    ? ultimosRegistros.filter((r) => combina(r.nome, r.detalhe, r.tipo))
+    : ultimosRegistros;
+
   // Detalhe dos cards: alunos agrupados por série/turma
-  const gradeDosAlunos = (lista: DetalheAluno[], vazio: string) => {
+  const gradeDosAlunos = (listaBruta: DetalheAluno[], vazio: string) => {
+    // Aplica a pesquisa global do painel no modal (nome ou série/turma)
+    const lista = filtrando
+      ? listaBruta.filter((a) => combina(a.nome, a.serie))
+      : listaBruta;
     if (lista.length === 0) {
-      return <p className="text-muted text-center py-4 mb-0">{vazio}</p>;
+      return (
+        <p className="text-muted text-center py-4 mb-0">
+          {msgVazia(`Nenhum resultado para "${busca.trim()}".`, vazio)}
+        </p>
+      );
     }
     const turmas = new Map<string, DetalheAluno[]>();
     for (const aluno of lista) {
@@ -300,9 +372,17 @@ export const DiretoriaDashboard: React.FC = () => {
   };
 
   // Detalhe dos cards: professores em tabela (disciplina + horário)
-  const gradeDosProfessores = (lista: DetalheProfessor[], vazio: string) => {
+  const gradeDosProfessores = (listaBruta: DetalheProfessor[], vazio: string) => {
+    // Aplica a pesquisa global do painel no modal (nome ou disciplina)
+    const lista = filtrando
+      ? listaBruta.filter((p) => combina(p.nome, p.materia))
+      : listaBruta;
     if (lista.length === 0) {
-      return <p className="text-muted text-center py-4 mb-0">{vazio}</p>;
+      return (
+        <p className="text-muted text-center py-4 mb-0">
+          {msgVazia(`Nenhum resultado para "${busca.trim()}".`, vazio)}
+        </p>
+      );
     }
     return (
       <Table hover responsive className="align-middle mb-0">
@@ -444,6 +524,38 @@ export const DiretoriaDashboard: React.FC = () => {
           </Col>
         </Row>
 
+        {/* PESQUISA GLOBAL — filtra aluno (nome/matrícula), turma/série e
+            professor em todas as seções e modais deste painel */}
+        <Card className="shadow-sm border-0 mb-4">
+          <Card.Body className="py-3">
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              <Form.Control
+                type="search"
+                className="form-control-custom"
+                style={{ maxWidth: 520 }}
+                placeholder="🔎 Pesquisar aluno (nome, matrícula ou turma/série)..."
+                aria-label="Pesquisar aluno, turma ou professor"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+              />
+              {filtrando && (
+                <>
+                  <small className="text-muted">
+                    Filtrando por <strong>“{busca.trim()}”</strong>
+                  </small>
+                  <Button
+                    size="sm"
+                    variant="outline-secondary"
+                    onClick={() => setBusca("")}
+                  >
+                    ✕ Limpar
+                  </Button>
+                </>
+              )}
+            </div>
+          </Card.Body>
+        </Card>
+
         {/* DETALHAMENTO POR SÉRIE E PROFESSORES */}
         <Row className="g-4 mb-4">
           {/* TABELA: ALUNOS POR SÉRIE */}
@@ -466,16 +578,30 @@ export const DiretoriaDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {alunosPorSerie.length === 0 ? (
+                      {serieVisivel.length === 0 ? (
                         <tr>
                           <td colSpan={2} className="text-center py-4 text-muted">
-                            Nenhum registro de aluno hoje.
+                            {msgVazia(
+                              `Nenhum resultado para “${busca.trim()}”.`,
+                              "Nenhum registro de aluno hoje."
+                            )}
                           </td>
                         </tr>
                       ) : (
-                        cortar("serie", alunosPorSerie).map((item, idx) => (
+                        cortar("serie", serieVisivel).map((item, idx) => (
                           <tr key={idx}>
-                            <td className="fw-semibold">{item.serie}</td>
+                            <td className="fw-semibold">
+                              {item.serie}
+                              {/* Nomes casados pela pesquisa de aluno (turma igual) */}
+                              {filtrando &&
+                                (nomesCasadosPorSerie.get(item.serie.trim() || "Sem série") || []).map(
+                                  (nome, i) => (
+                                    <div key={i} className="text-muted fw-normal small">
+                                      · {nome}
+                                    </div>
+                                  )
+                                )}
+                            </td>
                             <td className="text-center">
                               <Badge bg="primary" className="px-3 py-2 fs-6">
                                 {item.quantidade} alunos
@@ -512,14 +638,17 @@ export const DiretoriaDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {professoresPresentes.length === 0 ? (
+                      {professoresVisiveis.length === 0 ? (
                         <tr>
                           <td colSpan={3} className="text-center py-4 text-muted">
-                            Nenhum professor registrou entrada hoje.
+                            {msgVazia(
+                              `Nenhum resultado para “${busca.trim()}”.`,
+                              "Nenhum professor registrou entrada hoje."
+                            )}
                           </td>
                         </tr>
                       ) : (
-                        cortar("professores", professoresPresentes).map((prof, idx) => (
+                        cortar("professores", professoresVisiveis).map((prof, idx) => (
                           <tr key={idx}>
                             <td className="fw-bold">{prof.nome}</td>
                             <td>
@@ -542,7 +671,7 @@ export const DiretoriaDashboard: React.FC = () => {
         {/* ANOTAÇÕES DE PAIS E PROFESSORES */}
         <Card className="shadow-sm border-0 mb-4">
           <Card.Header className="bg-white fw-bold fs-6 py-3 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
-            <span>📝 Anotações de Pais &amp; Professores</span>
+            <span>📝 Anotações de Responsáveis &amp; Professores</span>
             <span className="d-flex align-items-center gap-2 fw-normal">
               {seletorLimite("anotacoes")}
               {botaoAlternar("anotacoes")}
@@ -562,14 +691,17 @@ export const DiretoriaDashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {anotacoes.length === 0 ? (
+                  {anotacoesVisiveis.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="text-center py-4 text-muted">
-                        Nenhuma anotação registrada ainda.
+                        {msgVazia(
+                          `Nenhum resultado para “${busca.trim()}”.`,
+                          "Nenhuma anotação registrada ainda."
+                        )}
                       </td>
                     </tr>
                   ) : (
-                    cortar("anotacoes", anotacoes).map((anot) => (
+                    cortar("anotacoes", anotacoesVisiveis).map((anot) => (
                       <tr key={anot.id}>
                         <td className="text-muted small text-nowrap">
                           {anot.criado_em.slice(0, 16)}
@@ -630,14 +762,17 @@ export const DiretoriaDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {logAcessos.length === 0 ? (
+                      {logAcessosVisivel.length === 0 ? (
                         <tr>
                           <td colSpan={3} className="text-center py-3 text-muted">
-                            Nenhum acesso nos últimos 30 dias.
+                            {msgVazia(
+                              `Nenhum resultado para “${busca.trim()}”.`,
+                              "Nenhum acesso nos últimos 30 dias."
+                            )}
                           </td>
                         </tr>
                       ) : (
-                        cortar("logAcessos", logAcessos).map((a) => (
+                        cortar("logAcessos", logAcessosVisivel).map((a) => (
                           <tr key={"ac" + a.id}>
                             <td className="small text-nowrap text-muted">
                               {a.criado_em ? a.criado_em.slice(0, 16) : "—"}
@@ -671,14 +806,17 @@ export const DiretoriaDashboard: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {logTerceiros.length === 0 ? (
+                      {logTerceirosVisivel.length === 0 ? (
                         <tr>
                           <td colSpan={4} className="text-center py-3 text-muted">
-                            Nenhum acesso temporário criado nos últimos 30 dias.
+                            {msgVazia(
+                              `Nenhum resultado para “${busca.trim()}”.`,
+                              "Nenhum acesso temporário criado nos últimos 30 dias."
+                            )}
                           </td>
                         </tr>
                       ) : (
-                        cortar("logTerceiros", logTerceiros).map((t) => (
+                        cortar("logTerceiros", logTerceirosVisivel).map((t) => (
                           <tr key={"tc" + t.id}>
                             <td className="small text-nowrap text-muted">
                               {t.criado_em ? t.criado_em.slice(0, 16) : "—"}
@@ -735,14 +873,17 @@ export const DiretoriaDashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {ultimosRegistros.length === 0 ? (
+                  {registrosVisiveis.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="text-center py-4 text-muted">
-                        Aguardando primeiro registro de validação do dia...
+                        {msgVazia(
+                          `Nenhum resultado para “${busca.trim()}”.`,
+                          "Aguardando primeiro registro de validação do dia..."
+                        )}
                       </td>
                     </tr>
                   ) : (
-                    cortar("fluxo", ultimosRegistros).map((reg) => (
+                    cortar("fluxo", registrosVisiveis).map((reg) => (
                       <tr key={reg.id}>
                         <td className="fw-bold text-secondary">{reg.hora}</td>
                         <td className="fw-semibold">{reg.nome}</td>

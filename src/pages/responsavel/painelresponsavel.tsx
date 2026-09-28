@@ -102,7 +102,7 @@ export const PainelResponsavel: React.FC = () => {
     return true;
   };
 
-  const carregar = async () => {
+  const carregar = async (silencioso = false) => {
     try {
       const res = await fetch("http://127.0.0.1:8787/api/painel/alunos", {
         headers: authHeaders(),
@@ -127,7 +127,10 @@ export const PainelResponsavel: React.FC = () => {
         }
       }
     } catch {
-      setMensagem({ tipo: "danger", texto: "Não foi possível conectar ao servidor." });
+      // No polling automático não alarma o responsável: só tenta de novo
+      if (!silencioso) {
+        setMensagem({ tipo: "danger", texto: "Não foi possível conectar ao servidor." });
+      }
     } finally {
       setLoading(false);
     }
@@ -136,6 +139,10 @@ export const PainelResponsavel: React.FC = () => {
   /* oxlint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     carregar();
+    // Atualização automática: notas lançadas/corrigidas pelo professor
+    // aparecem sozinhas no painel (a cada 15s, sem alertar o responsável)
+    const intervalo = setInterval(() => carregar(true), 15000);
+    return () => clearInterval(intervalo);
   }, []);
   /* oxlint-enable react-hooks/exhaustive-deps */
 

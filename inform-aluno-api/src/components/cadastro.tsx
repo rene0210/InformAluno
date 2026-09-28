@@ -46,9 +46,13 @@ export const Cadastro: React.FC = () => {
   const [responsavelNome, setResponsavelNome] = useState("");
   const [cpf, setCpf] = useState("");
 
-  // --- DADOS DO 2º RESPONSÁVEL (MÃE) ---
+  // --- DADOS DO 2º RESPONSÁVEL (opcional) ---
   const [responsavel2Nome, setResponsavel2Nome] = useState("");
   const [cpf2, setCpf2] = useState("");
+
+  // Blocos dos responsáveis removidos pelo botão 🗑 (só 1 é obrigatório)
+  const [resp1Removido, setResp1Removido] = useState(false);
+  const [resp2Removido, setResp2Removido] = useState(false);
 
   // --- FOTOS (BASE64) ---
   const [fotoAluno, setFotoAluno] = useState<string | null>(null);
@@ -169,8 +173,19 @@ export const Cadastro: React.FC = () => {
   const handleEnvio = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!fotoAluno || !fotoResponsavel || !fotoResponsavel2) {
-      alert("Por favor, registre a biometria/foto do aluno, do pai e da mãe antes de enviar.");
+    // Só 1 responsável é obrigatório — o outro bloco pode ter sido removido
+    const temResp1 = !resp1Removido;
+    const temResp2 = !resp2Removido;
+    if (!temResp1 && !temResp2) {
+      alert("Informe ao menos um responsável antes de enviar.");
+      return;
+    }
+    if (!fotoAluno) {
+      alert("Por favor, registre a biometria/foto do aluno antes de enviar.");
+      return;
+    }
+    if ((temResp1 && !fotoResponsavel) || (temResp2 && !fotoResponsavel2)) {
+      alert("Por favor, registre a biometria/foto de cada responsável informado antes de enviar.");
       return;
     }
 
@@ -194,12 +209,12 @@ export const Cadastro: React.FC = () => {
           matricula,
           serie,
           cpfAluno,
-          responsavelNome,
-          cpf,
-          fotoResponsavel,
-          responsavel2Nome,
-          cpf2,
-          fotoResponsavel2,
+          responsavelNome: resp1Removido ? "" : responsavelNome,
+          cpf: resp1Removido ? "" : cpf,
+          fotoResponsavel: resp1Removido ? null : fotoResponsavel,
+          responsavel2Nome: resp2Removido ? "" : responsavel2Nome,
+          cpf2: resp2Removido ? "" : cpf2,
+          fotoResponsavel2: resp2Removido ? null : fotoResponsavel2,
           fotoAluno,
           status: "PENDENTE_VALIDACAO", // Sinaliza para a Portaria validar
         }),
@@ -225,6 +240,35 @@ export const Cadastro: React.FC = () => {
     setTerceiroCpf("");
     setFotoTerceiro(null);
     setModoTerceiro("file");
+  };
+
+  // Botão 🗑 de cada bloco de responsável — no mínimo 1 precisa ficar.
+  const removerResponsavel = (qual: 1 | 2) => {
+    const outroRemovido = qual === 1 ? resp2Removido : resp1Removido;
+    if (outroRemovido) {
+      alert("Informe ao menos um responsável no cadastro do aluno.");
+      return;
+    }
+    if (qual === 1) {
+      pararCamera(videoResponsavelRef);
+      setResponsavelNome("");
+      setCpf("");
+      setFotoResponsavel(null);
+      setModoResponsavel("file");
+      setResp1Removido(true);
+    } else {
+      pararCamera(videoResponsavel2Ref);
+      setResponsavel2Nome("");
+      setCpf2("");
+      setFotoResponsavel2(null);
+      setModoResponsavel2("file");
+      setResp2Removido(true);
+    }
+  };
+
+  const restaurarResponsavel = (qual: 1 | 2) => {
+    if (qual === 1) setResp1Removido(false);
+    else setResp2Removido(false);
   };
 
   // --- HUB: carrega os filhos já pré-cadastrados desta conta ---
@@ -278,10 +322,10 @@ export const Cadastro: React.FC = () => {
       <h6 className="fw-bold mb-1">{f.nome}</h6>
       <div className="text-muted small mb-2">Matrícula {f.matricula}</div>
       <div className="small mb-1">
-        👤 Pai: <strong>{f.pai || "—"}</strong>
+        👤 Responsável: <strong>{f.pai || "—"}</strong>
       </div>
       <div className="small">
-        👩 Mãe: <strong>{f.mae || "—"}</strong>
+        👤 2º responsável: <strong>{f.mae || "—"}</strong>
       </div>
       {comAcao && podeEditar && (f.pai_id || f.mae_id) && (
         <div className="mt-2">
@@ -289,7 +333,7 @@ export const Cadastro: React.FC = () => {
             size="sm"
             variant="outline-primary"
             onClick={() => abrirEdicao(f)}
-            title="Editar os dados do pai e da mãe"
+            title="Editar os dados dos responsáveis"
           >
             ✏️ Editar
           </Button>
@@ -323,11 +367,11 @@ export const Cadastro: React.FC = () => {
   const salvarEdicao = async () => {
     if (!editando || salvandoEdicao) return;
     if (editando.pai_id && !editNomePai.trim()) {
-      setErroEdicao("Informe o nome do pai.");
+      setErroEdicao("Informe o nome do responsável.");
       return;
     }
     if (editando.mae_id && !editNomeMae.trim()) {
-      setErroEdicao("Informe o nome da mãe.");
+      setErroEdicao("Informe o nome do 2º responsável.");
       return;
     }
 
@@ -403,7 +447,7 @@ export const Cadastro: React.FC = () => {
     const setTel = lado === "pai" ? setEditTelPai : setEditTelMae;
     const foto = lado === "pai" ? editFotoPai : editFotoMae;
     const setFoto = lado === "pai" ? setEditFotoPai : setEditFotoMae;
-    const rotulo = lado === "pai" ? "Pai" : "Mãe";
+    const rotulo = lado === "pai" ? "Responsável" : "2º Responsável";
     const ativo = editAlvoFoto === lado;
 
     return (
@@ -681,7 +725,7 @@ export const Cadastro: React.FC = () => {
                   <div className="fs-1 mb-2">📧</div>
                   <h5 className="fw-bold">Solicitação enviada!</h5>
                   <p className="text-muted">
-                    O pai e a mãe receberam um e-mail para{" "}
+                    Os responsáveis receberam um e-mail para{" "}
                     <strong>aprovar ou rejeitar</strong> o cadastro de terceiro
                     responsável de <strong>{alvoTerceiro.nome}</strong>. A
                     pendência também aparece no painel do responsável.
@@ -726,8 +770,9 @@ export const Cadastro: React.FC = () => {
                       Aluno: <strong>{alvoTerceiro.nome}</strong> (matrícula{" "}
                       {alvoTerceiro.matricula})
                       <br />
-                      Preenchimento igual ao do pai e da mãe — o pai e a mãe
-                      aprovam por e-mail. A solicitação expira em 12 horas.
+                      Preenchimento igual ao dos responsáveis — os
+                      responsáveis aprovam por e-mail. A solicitação expira em
+                      12 horas.
                     </p>
                   </div>
 
@@ -910,7 +955,7 @@ export const Cadastro: React.FC = () => {
           </Modal.Header>
           <Modal.Body>
             <p className="text-muted small mb-3">
-              Altere os dados do pai e da mãe. <strong>Cada alteração é enviada por e-mail aos
+              Altere os dados dos responsáveis. <strong>Cada alteração é enviada por e-mail aos
               responsáveis</strong> do aluno.
             </p>
 
@@ -1145,19 +1190,46 @@ export const Cadastro: React.FC = () => {
                   </div>
                 </Col>
 
-                {/* --- SEÇÃO RESPONSÁVEL (PAI) --- */}
+                {/* --- SEÇÃO 1º RESPONSÁVEL --- */}
                 <Col lg={6} className="ps-lg-4 mt-4 mt-lg-0">
-                  <div className="d-flex align-items-center mb-3">
-                    <span className="step-number me-2">2</span>
-                    <h5 className="m-0 fw-bold fs-6 text-dark">Dados do Responsável (Pai)</h5>
+                  <div className="d-flex align-items-center justify-content-between mb-3">
+                    <div className="d-flex align-items-center">
+                      <span className="step-number me-2">2</span>
+                      <h5 className="m-0 fw-bold fs-6 text-dark">Dados do Responsável</h5>
+                    </div>
+                    {!resp1Removido ? (
+                      <Button
+                        size="sm"
+                        variant="outline-danger"
+                        title="Remover este responsável"
+                        onClick={() => removerResponsavel(1)}
+                      >
+                        🗑 Remover
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline-success"
+                        title="Adicionar este responsável de volta"
+                        onClick={() => restaurarResponsavel(1)}
+                      >
+                        ➕ Adicionar
+                      </Button>
+                    )}
                   </div>
 
+                  {resp1Removido ? (
+                    <p className="text-muted small mb-0">
+                      Bloco removido — apenas 1 responsável é obrigatório.
+                    </p>
+                  ) : (
+                  <>
                   <Form.Group className="mb-3">
                     <Form.Label className="form-label-custom">Nome Completo</Form.Label>
                     <Form.Control
                       type="text"
                       className="form-control-custom"
-                      placeholder="Nome do pai"
+                      placeholder="Nome do responsável"
                       value={responsavelNome}
                       onChange={(e) => setResponsavelNome(e.target.value)}
                       required
@@ -1165,7 +1237,7 @@ export const Cadastro: React.FC = () => {
                   </Form.Group>
 
                   <Form.Group className="mb-3">
-                    <Form.Label className="form-label-custom">CPF do Pai</Form.Label>
+                    <Form.Label className="form-label-custom">CPF do Responsável</Form.Label>
                     <Form.Control
                       type="text"
                       className="form-control-custom"
@@ -1180,10 +1252,10 @@ export const Cadastro: React.FC = () => {
                     />
                   </Form.Group>
 
-                  {/* Biometria Facial Pai */}
+                  {/* Biometria Facial do responsável */}
                   <div className="media-panel mt-3">
                     <div className="d-flex justify-content-between align-items-center mb-2">
-                      <span className="form-label-custom m-0">Foto para Validação (Pai)</span>
+                      <span className="form-label-custom m-0">Foto para Validação (Responsável)</span>
                       {fotoResponsavel && <Badge bg="success">Anexada</Badge>}
                     </div>
 
@@ -1233,25 +1305,54 @@ export const Cadastro: React.FC = () => {
 
                     {fotoResponsavel && (
                       <div className="mt-3 text-center">
-                        <img src={fotoResponsavel} alt="Pai Preview" className="preview-avatar" />
+                        <img src={fotoResponsavel} alt="Responsável Preview" className="preview-avatar" />
                       </div>
                     )}
                   </div>
+                  </>
+                  )}
                 </Col>
 
-                {/* --- SEÇÃO RESPONSÁVEL (MÃE) --- */}
+                {/* --- SEÇÃO 2º RESPONSÁVEL --- */}
                 <Col lg={6} className="ps-lg-4 mt-4">
-                  <div className="d-flex align-items-center mb-3">
-                    <span className="step-number me-2">3</span>
-                    <h5 className="m-0 fw-bold fs-6 text-dark">Dados da Responsável (Mãe)</h5>
+                  <div className="d-flex align-items-center justify-content-between mb-3">
+                    <div className="d-flex align-items-center">
+                      <span className="step-number me-2">3</span>
+                      <h5 className="m-0 fw-bold fs-6 text-dark">Dados do 2º Responsável</h5>
+                    </div>
+                    {!resp2Removido ? (
+                      <Button
+                        size="sm"
+                        variant="outline-danger"
+                        title="Remover este responsável"
+                        onClick={() => removerResponsavel(2)}
+                      >
+                        🗑 Remover
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline-success"
+                        title="Adicionar este responsável de volta"
+                        onClick={() => restaurarResponsavel(2)}
+                      >
+                        ➕ Adicionar
+                      </Button>
+                    )}
                   </div>
 
+                  {resp2Removido ? (
+                    <p className="text-muted small mb-0">
+                      Bloco removido — apenas 1 responsável é obrigatório.
+                    </p>
+                  ) : (
+                  <>
                   <Form.Group className="mb-3">
                     <Form.Label className="form-label-custom">Nome Completo</Form.Label>
                     <Form.Control
                       type="text"
                       className="form-control-custom"
-                      placeholder="Nome da mãe"
+                      placeholder="Nome do 2º responsável"
                       value={responsavel2Nome}
                       onChange={(e) => setResponsavel2Nome(e.target.value)}
                       required
@@ -1259,7 +1360,7 @@ export const Cadastro: React.FC = () => {
                   </Form.Group>
 
                   <Form.Group className="mb-3">
-                    <Form.Label className="form-label-custom">CPF da Mãe</Form.Label>
+                    <Form.Label className="form-label-custom">CPF do 2º Responsável</Form.Label>
                     <Form.Control
                       type="text"
                       className="form-control-custom"
@@ -1274,10 +1375,10 @@ export const Cadastro: React.FC = () => {
                     />
                   </Form.Group>
 
-                  {/* Biometria Facial Mãe */}
+                  {/* Biometria Facial do 2º responsável */}
                   <div className="media-panel mt-3">
                     <div className="d-flex justify-content-between align-items-center mb-2">
-                      <span className="form-label-custom m-0">Foto para Validação (Mãe)</span>
+                      <span className="form-label-custom m-0">Foto para Validação (2º Responsável)</span>
                       {fotoResponsavel2 && <Badge bg="success">Anexada</Badge>}
                     </div>
 
@@ -1327,10 +1428,12 @@ export const Cadastro: React.FC = () => {
 
                     {fotoResponsavel2 && (
                       <div className="mt-3 text-center">
-                        <img src={fotoResponsavel2} alt="Mãe Preview" className="preview-avatar" />
+                        <img src={fotoResponsavel2} alt="2º Responsável Preview" className="preview-avatar" />
                       </div>
                     )}
                   </div>
+                  </>
+                  )}
                 </Col>
 
               </Row>

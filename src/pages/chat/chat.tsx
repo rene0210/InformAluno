@@ -40,6 +40,7 @@ export const ChatPainel: React.FC = () => {
   const [selecionada, setSelecionada] = useState<ConversaItem | null>(null);
   const [mensagens, setMensagens] = useState<ChatMsg[]>([]);
   const [texto, setTexto] = useState("");
+  const [busca, setBusca] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [eu, setEu] = useState<number | null>(null);
@@ -247,6 +248,23 @@ export const ChatPainel: React.FC = () => {
   const totalNaoLidas = conversas.reduce((s, cv) => s + (cv.naoLidas || 0), 0);
   const iniciais = (nome: string): string => (nome.trim().slice(0, 1) || "?").toUpperCase();
 
+  // Normaliza para comparar sem acento/maiúscula (ex.: "João" acha "joao")
+  const normalizar = (v: string): string =>
+    v
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+  // Contatos filtrados pela barra de pesquisa (nome, subtítulo e última msg)
+  const termo = normalizar(busca.trim());
+  const conversasVisiveis = termo
+    ? conversas.filter((cv) =>
+        [cv.contatoNome, cv.contatoSubtitulo, cv.ultimaTexto || ""].some((campo) =>
+          normalizar(campo).includes(termo)
+        )
+      )
+    : conversas;
+
   return (
     <div className="chat-painel">
       <div className="chat-topo">
@@ -264,12 +282,25 @@ export const ChatPainel: React.FC = () => {
       <div className="chat-layout">
         {/* Contatos — a barra do aluno/professor com a bolinha de notificação */}
         <div className="chat-lista">
-          {conversas.length === 0 ? (
+          {/* Filtro de pesquisa: nome do contato, subtítulo ou última mensagem */}
+          <div className="chat-busca">
+            <Form.Control
+              type="search"
+              size="sm"
+              placeholder="🔎 Pesquisar contato..."
+              aria-label="Pesquisar contato"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          </div>
+          {conversasVisiveis.length === 0 ? (
             <p className="text-muted small p-2 mb-0">
-              Nenhum contato disponível para conversar.
+              {busca
+                ? `Nenhum contato encontrado para "${busca.trim()}".`
+                : "Nenhum contato disponível para conversar."}
             </p>
           ) : (
-            conversas.map((cv) => {
+            conversasVisiveis.map((cv) => {
               const ativa = selecionada ? chaveDe(selecionada) === chaveDe(cv) : false;
               return (
                 <button

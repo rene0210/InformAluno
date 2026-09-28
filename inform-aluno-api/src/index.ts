@@ -152,7 +152,7 @@ const atualizarFotoAluno = async (
       .run();
   } else if (alvo === "pai") {
     if (!aluno.responsavel_id) {
-      return { status: 400, body: { error: "Este aluno não tem pai/responsável vinculado." } };
+      return { status: 400, body: { error: "Este aluno não tem responsável vinculado." } };
     }
     await env.DB
       .prepare("UPDATE responsaveis SET foto_base64 = ? WHERE id = ?")
@@ -160,7 +160,7 @@ const atualizarFotoAluno = async (
       .run();
   } else {
     if (!aluno.responsavel2_id) {
-      return { status: 400, body: { error: "Este aluno não tem mãe vinculada." } };
+      return { status: 400, body: { error: "Este aluno não tem 2º responsável vinculado." } };
     }
     await env.DB
       .prepare("UPDATE responsaveis SET foto_base64 = ? WHERE id = ?")
@@ -169,7 +169,8 @@ const atualizarFotoAluno = async (
   }
 
   // Aviso ao responsável: a imagem foi ajustada (admin ou secretaria)
-  const rotulo = alvo === "aluno" ? "do aluno" : alvo === "pai" ? "do pai" : "da mãe";
+  const rotulo =
+    alvo === "aluno" ? "do aluno" : alvo === "pai" ? "do responsável" : "do 2º responsável";
   await notificar(
     env,
     await emailsResponsavelAluno(env.DB, id),
@@ -1928,7 +1929,7 @@ app.put(
         const responsavelId = Number(campos.id) || 0;
         if (!responsavelId) return null;
 
-        const rotulo = alvo === "pai" ? "Pai" : "Mãe";
+        const rotulo = alvo === "pai" ? "Responsável" : "2º Responsável";
         const pertence = alvo === "pai" ? aluno.responsavel_id : aluno.responsavel2_id;
         if (pertence !== responsavelId) return null;
 
@@ -2047,11 +2048,13 @@ app.post("/api/cadastro", async (c) => {
 
     const nome = body.nome;
     const matricula = body.matricula;
-    // 1º responsável = Pai
-    const responsavelNome = body.responsavelNome;
+    // 1º responsável (bloco removível — só um é obrigatório)
+    const responsavelNome =
+      typeof body.responsavelNome === "string" ? body.responsavelNome.trim() : "";
     const fotoResponsavel = body.fotoResponsavel || "";
-    // 2º responsável = Mãe
-    const responsavel2Nome = body.responsavel2Nome;
+    // 2º responsável (opcional — pode ficar em branco)
+    const responsavel2Nome =
+      typeof body.responsavel2Nome === "string" ? body.responsavel2Nome.trim() : "";
     const fotoResponsavel2 = body.fotoResponsavel2 || "";
     const fotoAluno = body.fotoAluno || body.foto || "";
     const status = body.status || "PENDENTE_VALIDACAO";
@@ -2059,19 +2062,41 @@ app.post("/api/cadastro", async (c) => {
     // detalhe por turma nos cards clicáveis da diretoria.
     const serie = typeof body.serie === "string" ? body.serie.trim().slice(0, 40) : "";
 
-    if (!nome || !matricula || !responsavelNome || !responsavel2Nome) {
-      return c.json({ error: "Dados incompletos (aluno, pai e mãe)." }, 400);
+    if (!nome || !matricula) {
+      return c.json({ error: "Dados incompletos (aluno)." }, 400);
+    }
+    if (!responsavelNome && !responsavel2Nome) {
+      return c.json({ error: "Informe ao menos um responsável." }, 400);
     }
 
-    // Sanitização e validação dos CPFs (Pai, Mãe e Aluno)
-    const respCpfVal = limparEValidarCPF(body.cpf);
+    // Sem o 1º responsável, o 2º assume a vaga de principal: o aluno
+    // fica sempre com um responsável no slot 1 (responsavel_id).
+    const soTemSegundo = !responsavelNome && Boolean(responsavel2Nome);
+    const nomeResp1 = soTemSegundo ? responsavel2Nome : responsavelNome;
+    const cpfResp1Input = soTemSegundo ? body.cpf2 : body.cpf;
+    const fotoResp1 = soTemSegundo ? fotoResponsavel2 : fotoResponsavel;
+    const nomeResp2 = soTemSegundo ? "" : responsavel2Nome;
+    const cpfResp2Input = soTemSegundo ? "" : body.cpf2;
+    const fotoResp2 = soTemSegundo ? "" : fotoResponsavel2;
+
+    // Sanitização e validação dos CPFs (só quando o responsável foi informado)
+    const respCpfVal = limparEValidarCPF(cpfResp1Input);
     if (respCpfVal.error) {
-      return c.json({ error: `CPF do responsável (pai) inválido: ${respCpfVal.error}` }, 400);
+      return c.json({ error: `CPF do responsável inválido: ${respCpfVal.error}` }, 400);
     }
 
-    const resp2CpfVal = limparEValidarCPF(body.cpf2);
+    const resp2CpfVal = limparEValidarCPF(cpfResp2Input);
     if (resp2CpfVal.error) {
-      return c.json({ error: `CPF da mãe inválido: ${resp2CpfVal.error}` }, 400);
+      return c.json({ error: `CPF do 2º responsável inválido: ${resp2CpfVal.error}` }, 400);
+    }
+
+    // Cada responsável informado precisa de CPF (a tabela é UNIQUE NOT NULL
+    // e sem isso dois cadastros concorreriam pelo mesmo "" vazio).
+    if (!respCpfVal.cpf) {
+      return c.json({ error: "Informe o CPF do responsável." }, 400);
+    }
+    if (nomeResp2 && !resp2CpfVal.cpf) {
+      return c.json({ error: "Informe o CPF do 2º responsável." }, 400);
     }
 
     const alunoCpfVal = limparEValidarCPF(body.cpfAluno);
@@ -2084,7 +2109,7 @@ app.post("/api/cadastro", async (c) => {
     const cpfAluno = alunoCpfVal.cpf;
 
     if (cpfResponsavel && cpfResponsavel === cpfResponsavel2) {
-      return c.json({ error: "Os CPFs do pai e da mãe devem ser diferentes." }, 400);
+      return c.json({ error: "Os CPFs dos responsáveis devem ser diferentes." }, 400);
     }
 
     // Verificar duplicidade de responsável por CPF (somente se informado)
@@ -2100,7 +2125,7 @@ app.post("/api/cadastro", async (c) => {
       }
     }
 
-    // Verificar duplicidade da mãe por CPF
+    // Verificar duplicidade do 2º responsável por CPF
     if (cpfResponsavel2) {
       const responsavel2Existente = await c.env.DB.prepare(
         "SELECT id FROM responsaveis WHERE cpf = ?"
@@ -2109,7 +2134,7 @@ app.post("/api/cadastro", async (c) => {
         .first();
 
       if (responsavel2Existente) {
-        return c.json({ error: "CPF da mãe já está cadastrado — este aluno já foi pré-cadastrado." }, 409);
+        return c.json({ error: "CPF do 2º responsável já está cadastrado — este aluno já foi pré-cadastrado." }, 409);
       }
     }
 
@@ -2138,23 +2163,26 @@ app.post("/api/cadastro", async (c) => {
       }
     }
 
-    // 1. Inserir o 1º Responsável (Pai) — com CPF limpo e sem formatação
+    // 1. Inserir o 1º responsável (obrigatório) — CPF limpo, sem formatação
     const resResp = await c.env.DB.prepare(
       "INSERT INTO responsaveis (nome, cpf, foto_base64) VALUES (?, ?, ?)"
     )
-      .bind(responsavelNome, cpfResponsavel, fotoResponsavel)
+      .bind(nomeResp1, cpfResponsavel, fotoResp1)
       .run();
 
     const idResponsavel = resResp.meta.last_row_id;
 
-    // 2. Inserir o 2º Responsável (Mãe)
-    const resResp2 = await c.env.DB.prepare(
-      "INSERT INTO responsaveis (nome, cpf, foto_base64) VALUES (?, ?, ?)"
-    )
-      .bind(responsavel2Nome, cpfResponsavel2, fotoResponsavel2)
-      .run();
+    // 2. Inserir o 2º responsável somente quando informado
+    let idResponsavel2: number | null = null;
+    if (nomeResp2) {
+      const resResp2 = await c.env.DB.prepare(
+        "INSERT INTO responsaveis (nome, cpf, foto_base64) VALUES (?, ?, ?)"
+      )
+        .bind(nomeResp2, cpfResponsavel2, fotoResp2)
+        .run();
 
-    const idResponsavel2 = resResp2.meta.last_row_id;
+      idResponsavel2 = resResp2.meta.last_row_id;
+    }
 
     // 3. Inserir o Aluno com os dois responsáveis (CPFs limpos)
     await c.env.DB.prepare(
@@ -2164,18 +2192,20 @@ app.post("/api/cadastro", async (c) => {
       .run();
 
     // 4. Vincula a conta logada aos responsaveis criados — é esse vínculo
-    //    que permite ao pai/mãe ver os filhos no painel de notas.
+    //    que permite ao responsável ver os filhos no painel de notas.
     if (usuarioId) {
       await c.env.DB.prepare(
         "INSERT OR IGNORE INTO responsavel_usuario (responsavel_id, usuario_id) VALUES (?, ?)"
       )
         .bind(idResponsavel, usuarioId)
         .run();
-      await c.env.DB.prepare(
-        "INSERT OR IGNORE INTO responsavel_usuario (responsavel_id, usuario_id) VALUES (?, ?)"
-      )
-        .bind(idResponsavel2, usuarioId)
-        .run();
+      if (idResponsavel2) {
+        await c.env.DB.prepare(
+          "INSERT OR IGNORE INTO responsavel_usuario (responsavel_id, usuario_id) VALUES (?, ?)"
+        )
+          .bind(idResponsavel2, usuarioId)
+          .run();
+      }
     }
 
     // Confirmação por e-mail para a conta que fez o pré-cadastro
@@ -2410,25 +2440,29 @@ app.put("/api/professor/notas", async (c) => {
       .bind(aluno_id, materiaNome, bimestreNum, notaNum, c.get("usuarioId"))
       .run();
 
-    // Avisa o responsável: nota lançada (ou corrigida, com o valor anterior)
+    // Avisa o responsável: só quando nasce uma nota ou o valor muda — no
+    // auto-save do professor o PUT pode reenviar o mesmo valor e não vale
+    // a pena encher a caixa de entrada de e-mails iguais.
     const notaTexto = String(notaNum).replace(".", ",");
     const anteriorOk = notaAnterior !== null && notaAnterior !== undefined;
     const mudou = anteriorOk && Number(notaAnterior.nota) !== notaNum;
-    const destinosNota = await emailsResponsavelAluno(c.env.DB, aluno_id);
-    await notificar(
-      c.env,
-      destinosNota,
-      mudou
-        ? `Nota corrigida: ${aluno.nome} — ${bimestreNum}º bimestre · ${materiaNome}`
-        : `Nova nota: ${aluno.nome} — ${bimestreNum}º bimestre · ${materiaNome}`,
-      emailNota(
-        aluno.nome,
-        bimestreNum,
-        materiaNome,
-        notaTexto,
-        mudou ? String(notaAnterior.nota).replace(".", ",") : null
-      )
-    );
+    if (!anteriorOk || mudou) {
+      const destinosNota = await emailsResponsavelAluno(c.env.DB, aluno_id);
+      await notificar(
+        c.env,
+        destinosNota,
+        mudou
+          ? `Nota corrigida: ${aluno.nome} — ${bimestreNum}º bimestre · ${materiaNome}`
+          : `Nova nota: ${aluno.nome} — ${bimestreNum}º bimestre · ${materiaNome}`,
+        emailNota(
+          aluno.nome,
+          bimestreNum,
+          materiaNome,
+          notaTexto,
+          mudou ? String(notaAnterior.nota).replace(".", ",") : null
+        )
+      );
+    }
 
     return c.json({ success: true, message: "Nota salva!" }, 200);
   } catch (e: unknown) {
@@ -2923,9 +2957,9 @@ app.post("/api/convite/gerar", autenticar(["RESPONSAVEL", "ADMIN"]), async (c) =
       }
     }
 
-    if (!aluno.responsavel_id || !aluno.responsavel2_id) {
+    if (!aluno.responsavel_id && !aluno.responsavel2_id) {
       return c.json(
-        { error: "O aluno precisa ter pai e mãe cadastrados antes de convidar um terceiro." },
+        { error: "O aluno precisa ter ao menos um responsável cadastrado antes de convidar um terceiro." },
         400
       );
     }
@@ -3023,9 +3057,9 @@ app.post("/api/convite/terceiro", autenticar(["RESPONSAVEL", "SECRETARIA", "ADMI
       }
     }
 
-    if (!aluno.responsavel_id || !aluno.responsavel2_id) {
+    if (!aluno.responsavel_id && !aluno.responsavel2_id) {
       return c.json(
-        { error: "O aluno precisa ter pai e mãe cadastrados antes de ter um terceiro." },
+        { error: "O aluno precisa ter ao menos um responsável cadastrado antes de ter um terceiro." },
         400
       );
     }
@@ -3045,7 +3079,7 @@ app.post("/api/convite/terceiro", autenticar(["RESPONSAVEL", "SECRETARIA", "ADMI
       return c.json({ error: "Informe um CPF com 11 dígitos." }, 400);
     }
     if (cpfVal.cpf === aluno.cpf_pai || cpfVal.cpf === aluno.cpf_mae) {
-      return c.json({ error: "O CPF do terceiro responsável deve ser diferente do pai e da mãe." }, 400);
+      return c.json({ error: "O CPF do terceiro responsável deve ser diferente dos responsáveis do aluno." }, 400);
     }
     const cpfJaCadastrado = await c.env.DB.prepare(
       "SELECT id FROM responsaveis WHERE cpf = ?"
@@ -3089,7 +3123,7 @@ app.post("/api/convite/terceiro", autenticar(["RESPONSAVEL", "SECRETARIA", "ADMI
       {
         success: true,
         message:
-          "Solicitação enviada! O pai e a mãe receberam um e-mail para aprovar ou rejeitar.",
+          "Solicitação enviada! Os responsáveis receberam um e-mail para aprovar ou rejeitar.",
       },
       201
     );
@@ -3428,7 +3462,7 @@ app.post("/api/convite/:token/cadastrar", async (c) => {
           success: true,
           tipo: "TERCEIRO_RESPONSAVEL",
           message:
-            "Cadastro enviado! O pai e a mãe receberam um e-mail para aprovar ou rejeitar a solicitação.",
+            "Cadastro enviado! Os responsáveis receberam um e-mail para aprovar ou rejeitar a solicitação.",
         },
         201
       );

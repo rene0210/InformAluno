@@ -60,8 +60,17 @@ export const ProfessorDashboard: React.FC = () => {
   // Grade escolar (catálogo de matérias) e matéria selecionada no lançamento
   const [materiasGrade, setMateriasGrade] = useState<string[]>([]);
   const [materiaNota, setMateriaNota] = useState("");
-  const [edicoes, setEdicoes] = useState<Record<number, string>>({});
-  const [salvandoNota, setSalvandoNota] = useState<number | null>(null);
+  const [edicoes, setEdicoes] = useState<Record<string, string>>({});
+  // Auto-save: estado visível por célula (aluno:bimestre:materia)
+  const [statusNota, setStatusNota] = useState<
+    Record<string, { estado: "salvando" | "ok" | "erro"; texto?: string }>
+  >({});
+  // Debounce de cada célula em edição (o professor digita e salva sozinho)
+  const timersNota = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // O que cada timer pendente vai salvar (vazio = nada a fazer)
+  const pendentesNota = useRef<
+    Record<string, { alunoId: number; valor: string; bim: number; mat: string }>
+  >({});
   const [mensagem, setMensagem] = useState<Mensagem | null>(null);
 
   // Formulário de acompanhamento
@@ -198,45 +207,133 @@ export const ProfessorDashboard: React.FC = () => {
   }, [materiasGrade, materiaReconhecimento, materiaNota]);
 
   const valorNota = (aluno: AlunoNota): string => {
-    if (edicoes[aluno.id] !== undefined) return edicoes[aluno.id];
+    const chave = `${aluno.id}:${bimestre}:${materiaNota}`;
+    if (edicoes[chave] !== undefined) return edicoes[chave];
     const nota = aluno.notas.find(
       (n) => n.bimestre === bimestre && n.materia === materiaNota
     );
     return nota ? String(nota.nota).replace(".", ",") : "";
   };
 
-  const salvarNota = async (aluno: AlunoNota) => {
-    const valor = valorNota(aluno).trim();
-    if (!materiaNota) return;
-    setSalvandoNota(aluno.id);
+  // Salva a nota de uma célula (aluno + bimestre + matéria). Os argumentos
+  // são explícitos para o auto-save não usar um closure velho de estado.
+  const salvarNota = async (
+    alunoId: number,
+    valorBruto: string,
+    bim: number,
+    mat: string
+  ) => {
+    const valor = (valorBruto || "").trim();
+    const chave = `${alunoId}:${bim}:${mat}`;
+    if (!mat) return;
+
+    // Célula vazia: só descarta o rascunho local (não apaga nota lançada)
+    if (valor === "") {
+      setStatusNota((prev) => {
+        if (!(chave in prev)) return prev;
+        const novo = { ...prev };
+        delete novo[chave];
+        return novo;
+      });
+      setEdicoes((prev) => {
+        if (!(chave in prev)) return prev;
+        const novo = { ...prev };
+        delete novo[chave];
+        return novo;
+      });
+      return;
+    }
+
+    const notaNum = Number(valor.replace(",", "."));
+    if (Number.isNaN(notaNum) || notaNum < 0 || notaNum > 10) {
+      setStatusNota((prev) => ({
+        ...prev,
+        [chave]: { estado: "erro", texto: "Deve ser de 0 a 10" },
+      }));
+      return;
+    }
+
+    // Valor igual ao já salvo: nada a enviar (evita spam no auto-save)
+    const alunoSalvo = alunos.find((a) => a.id === alunoId);
+    const jaSalva = alunoSalvo?.notas.find(
+      (n) => n.bimestre === bim && n.materia === mat
+    );
+    if (jaSalva && Number(jaSalva.nota) === notaNum) {
+      setStatusNota((prev) => ({ ...prev, [chave]: { estado: "ok" } }));
+      setEdicoes((prev) => {
+        if (!(chave in prev)) return prev;
+        const novo = { ...prev };
+        delete novo[chave];
+        return novo;
+      });
+      return;
+    }
+
+    setStatusNota((prev) => ({ ...prev, [chave]: { estado: "salvando" } }));
     try {
       const res = await fetch("http://127.0.0.1:8787/api/professor/notas", {
         method: "PUT",
         headers: authHeaders(),
-        body: JSON.stringify({ aluno_id: aluno.id, bimestre, materia: materiaNota, nota: valor }),
+        body: JSON.stringify({ aluno_id: alunoId, bimestre: bim, materia: mat, nota: valor }),
       });
       if (!tratarResposta(res)) return;
       const data = await res.json();
       if (res.ok) {
-        setMensagem({
-          tipo: "success",
-          texto: `Nota de ${materiaNota} (${bimestre}º bimestre) salva!`,
-        });
+        setStatusNota((prev) => ({ ...prev, [chave]: { estado: "ok" } }));
         setEdicoes((prev) => {
+          if (!(chave in prev)) return prev;
           const novo = { ...prev };
-          delete novo[aluno.id];
+          delete novo[chave];
           return novo;
         });
         await carregar();
       } else {
-        setMensagem({ tipo: "danger", texto: data.error || "Erro ao salvar a nota." });
+        setStatusNota((prev) => ({
+          ...prev,
+          [chave]: { estado: "erro", texto: data.error || "Erro ao salvar" },
+        }));
       }
     } catch {
-      setMensagem({ tipo: "danger", texto: "Não foi possível conectar ao servidor." });
-    } finally {
-      setSalvandoNota(null);
+      setStatusNota((prev) => ({
+        ...prev,
+        [chave]: { estado: "erro", texto: "Sem conexão — tente de novo" },
+      }));
     }
   };
+
+  // Debounce do auto-save: o professor digita e a nota salva sozinha ~1s
+  // depois, sem botão. Cada célula tem seu próprio timer.
+  const agendarAutoSave = (alunoId: number, valor: string) => {
+    if (!materiaNota) return;
+    const chave = `${alunoId}:${bimestre}:${materiaNota}`;
+    pendentesNota.current[chave] = { alunoId, valor, bim: bimestre, mat: materiaNota };
+    const anterior = timersNota.current[chave];
+    if (anterior) clearTimeout(anterior);
+    timersNota.current[chave] = setTimeout(() => {
+      delete timersNota.current[chave];
+      const pendente = pendentesNota.current[chave];
+      delete pendentesNota.current[chave];
+      if (pendente) {
+        void salvarNota(pendente.alunoId, pendente.valor, pendente.bim, pendente.mat);
+      }
+    }, 900);
+  };
+
+  // Ao sair da tela, salva o que ficou pendente em vez de perder o digito
+  /* oxlint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    return () => {
+      const timers = timersNota.current;
+      const pendentes = pendentesNota.current;
+      timersNota.current = {};
+      pendentesNota.current = {};
+      for (const t of Object.values(timers)) clearTimeout(t);
+      for (const p of Object.values(pendentes)) {
+        void salvarNota(p.alunoId, p.valor, p.bim, p.mat);
+      }
+    };
+  }, []);
+  /* oxlint-enable react-hooks/exhaustive-deps */
 
   const registrarAcompanhamento = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -470,7 +567,7 @@ export const ProfessorDashboard: React.FC = () => {
                       <th>Matrícula</th>
                       <th style={{ width: "150px" }}>Nota (0–10)</th>
                       <th className="text-center" style={{ width: "130px" }}>
-                        Ação
+                        Status
                       </th>
                     </tr>
                   </thead>
@@ -507,20 +604,49 @@ export const ProfessorDashboard: React.FC = () => {
                               inputMode="decimal"
                               placeholder="—"
                               value={valorNota(aluno)}
-                              onChange={(e) =>
-                                setEdicoes((prev) => ({ ...prev, [aluno.id]: e.target.value }))
-                              }
+                              onChange={(e) => {
+                                const valor = e.target.value;
+                                setEdicoes((prev) => ({
+                                  ...prev,
+                                  [`${aluno.id}:${bimestre}:${materiaNota}`]: valor,
+                                }));
+                                // Auto-save: digitar já agenda o envio
+                                agendarAutoSave(aluno.id, valor);
+                              }}
                             />
                           </td>
                           <td className="text-center">
-                            <Button
-                              size="sm"
-                              className="btn-primary-custom"
-                              disabled={salvandoNota === aluno.id || !materiaNota}
-                              onClick={() => salvarNota(aluno)}
-                            >
-                              {salvandoNota === aluno.id ? "Salvando..." : "💾 Salvar"}
-                            </Button>
+                            {/* Indicador do auto-save (não há botão Salvar) */}
+                            {(() => {
+                              const st =
+                                statusNota[`${aluno.id}:${bimestre}:${materiaNota}`];
+                              if (st?.estado === "salvando") {
+                                return (
+                                  <Badge bg="secondary" className="px-2 py-1">
+                                    ⏳ Salvando...
+                                  </Badge>
+                                );
+                              }
+                              if (st?.estado === "ok") {
+                                return (
+                                  <Badge bg="success" className="px-2 py-1">
+                                    ✓ Salvo
+                                  </Badge>
+                                );
+                              }
+                              if (st?.estado === "erro") {
+                                return (
+                                  <Badge bg="danger" className="px-2 py-1" title={st.texto}>
+                                    ⚠ {st.texto}
+                                  </Badge>
+                                );
+                              }
+                              return (
+                                <small className="text-muted">
+                                  {materiaNota ? "Auto-save" : "—"}
+                                </small>
+                              );
+                            })()}
                           </td>
                         </tr>
                       ))
