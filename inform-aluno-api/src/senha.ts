@@ -52,6 +52,64 @@ function iguais(a: Uint8Array, b: Uint8Array): boolean {
   return dif === 0;
 }
 
+// ============================================================
+// PADRÃO DE SEGURANÇA DA SENHA
+//
+// Exigido em TODO ponto que CRIA ou TROCA senha: /api/auth/registro,
+// /api/recuperar-senha/:token (tela "Esqueci a senha") e
+// /api/admin/usuarios/:id/senha (painel do admin).
+//
+// O LOGIN não valida nada: contas antigas com senha fraca continuam
+// entrando e só são cobradas na próxima troca de senha (migração
+// preguiçosa, como já acontece com o hash). Por isso o login errado
+// devolve só "E-mail ou senha incorretos" — o alerta com as normas é
+// montado pelo front com estas MESMAS frases
+// (src/components/senhas.tsx).
+// ============================================================
+
+export const REGRAS_SENHA = [
+  "Pelo menos 8 caracteres",
+  "Pelo menos 1 letra maiúscula (A-Z)",
+  "Pelo menos 1 letra minúscula (a-z)",
+  "Pelo menos 1 caractere especial (ex.: @ # $ % & ! ?)",
+  "Sem sequências óbvias como abc, cba ou 123",
+];
+
+/** abc / cba / 123 / 321 — 3 caracteres em sequência contínua. */
+const temSequencia = (senha: string): boolean => {
+  const texto = senha.toLowerCase();
+  for (let i = 0; i + 2 < texto.length; i++) {
+    const a = texto.charCodeAt(i);
+    const b = texto.charCodeAt(i + 1);
+    const c = texto.charCodeAt(i + 2);
+    if (b - a === 1 && c - b === 1) return true; // crescente
+    if (a - b === 1 && b - c === 1) return true; // decrescente
+  }
+  return false;
+};
+
+/**
+ * Devolve as regras que a senha ainda NÃO cumpre — [] = senha válida.
+ */
+export const validarSenhaForte = (senha: string): string[] => {
+  const pendentes: string[] = [];
+  if (senha.length < 8) pendentes.push(REGRAS_SENHA[0]);
+  if (!/[A-Z]/.test(senha)) pendentes.push(REGRAS_SENHA[1]);
+  if (!/[a-z]/.test(senha)) pendentes.push(REGRAS_SENHA[2]);
+  if (!/[^A-Za-z0-9]/.test(senha)) pendentes.push(REGRAS_SENHA[3]);
+  if (temSequencia(senha)) pendentes.push(REGRAS_SENHA[4]);
+  return pendentes;
+};
+
+/** Recusa padrão (400): mensagem curta + a lista de normas não cumpridas. */
+export const recusaSenha = (
+  senha: string
+): { error: string; erros: string[] } | null => {
+  const erros = validarSenhaForte(senha);
+  if (erros.length === 0) return null;
+  return { error: "Senha fora do padrão de segurança.", erros };
+};
+
 /** Gera o valor completo a ser gravado em `usuarios.senha`. */
 export async function hashSenha(senha: string): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(TAM_SALT));

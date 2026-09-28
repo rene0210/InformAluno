@@ -1,6 +1,6 @@
-# E2E — Link temporario de cadastro de TERCEIRO RESPONSAVEL (12h + aprovacao)
+﻿# E2E — Link temporario de cadastro de TERCEIRO RESPONSAVEL (12h + aprovacao)
 $ErrorActionPreference = "Continue"
-$base = "http://127.0.0.1:8787"
+$base = if ($env:API_URL) { $env:API_URL } else { "http://127.0.0.1:8787" }
 $tmp = "C:\Users\Rene Silva\AppData\Local\Temp\opencode"
 $bodyFile = Join-Path $tmp "e2e-body.json"
 $payloadFile = Join-Path $tmp "e2e-payload.json"
@@ -20,7 +20,7 @@ function Invoke-JsonSend($metodo, $rota, $obj, $token) {
   if ($token) { $reqArgs += @("-H", ("Authorization: Bearer " + $token)) }
   $code = curl.exe @reqArgs ($base + $rota)
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -31,7 +31,7 @@ function Invoke-GetAuth($rota, $token) {
     $code = curl.exe -s -o $bodyFile -w "%{http_code}" ($base + $rota)
   }
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -102,7 +102,9 @@ function Extract-Token($link) {
 $foto = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
 # ===== 1. Login admin =====
-$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = "admin123" } $null
+# Credenciais de teste: so em .dev.vars (gitignored) — nada versionado.
+. (Join-Path $PSScriptRoot "..\credenciais.ps1")
+$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = $senhaAdmin } $null
 $tokenAdmin = $null
 if ($loginAdmin.code -eq 200) { $tokenAdmin = ($loginAdmin.body | ConvertFrom-Json).token }
 Check "Login admin" ($tokenAdmin -ne $null) ("[HTTP " + $loginAdmin.code + "]")
@@ -110,22 +112,22 @@ if (-not $tokenAdmin) { Write-Output "SEM TOKEN ADMIN - abortando"; exit 1 }
 
 # ===== 2. Pai vinculado + outro usuario sem vinculo =====
 $regPai = Invoke-JsonSend "POST" "/api/auth/registro" @{
-  nome = "Pai Teste Convite"; email = "e2e.convite.pai@x.com"; senha = "SenhaConv123"
+  nome = "Pai Teste Convite"; email = "e2e.convite.pai@x.com"; senha = "SenhaConv#12"
 } $null
 $paiId = $null
 if ($regPai.code -eq 201) { $paiId = ($regPai.body | ConvertFrom-Json).usuario.id }
 elseif ($regPai.code -eq 400) { Write-Output "INFO  pai ja existe (reuso)" }
-$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.convite.pai@x.com"; senha = "SenhaConv123" } $null
+$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.convite.pai@x.com"; senha = "SenhaConv#12" } $null
 $tokenPai = $null
 if ($loginPai.code -eq 200) { $tokenPai = ($loginPai.body | ConvertFrom-Json).token }
 Check "Login pai" ($tokenPai -ne $null) ("[HTTP " + $loginPai.code + "]")
 
 $regOutro = Invoke-JsonSend "POST" "/api/auth/registro" @{
-  nome = "Outro Teste Convite"; email = "e2e.convite.outro@x.com"; senha = "SenhaOut123"
+  nome = "Outro Teste Convite"; email = "e2e.convite.outro@x.com"; senha = "SenhaOut#12"
 } $null
 $outroId = $null
 if ($regOutro.code -eq 201) { $outroId = ($regOutro.body | ConvertFrom-Json).usuario.id }
-$loginOutro = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.convite.outro@x.com"; senha = "SenhaOut123" } $null
+$loginOutro = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.convite.outro@x.com"; senha = "SenhaOut#12" } $null
 $tokenOutro = $null
 if ($loginOutro.code -eq 200) { $tokenOutro = ($loginOutro.body | ConvertFrom-Json).token }
 Check "Login outro usuario" ($tokenOutro -ne $null) ("[HTTP " + $loginOutro.code + "]")

@@ -4,8 +4,10 @@
    - Registro gravado em registros_entrada (tipo VAN) e visivel na diretoria
    - Aviso (e-mail) para pai + secretaria + coordenador */
 
-const API = "http://127.0.0.1:8787";
-const SENHA = "informaluno123";
+import { credencial } from "../credenciais.mjs";
+
+const API = process.env.API_URL || "http://127.0.0.1:8787";
+const SENHA = credencial("ELENCO_SENHA");
 let pass = 0;
 let fail = 0;
 
@@ -48,7 +50,7 @@ const login = async (email, senha = SENHA) => {
 };
 
 const main = async () => {
-  const admin = await login("admin@informaluno.com", "admin123");
+  const admin = await login("admin@informaluno.com", credencial("ADMIN_SENHA"));
   check("Login do admin master", !!admin);
   if (!admin) process.exit(1);
   const tokenAdmin = admin.token;

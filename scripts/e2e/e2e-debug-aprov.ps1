@@ -1,6 +1,6 @@
-# Debug puntual: reproduz a aprovacao 500 e imprime o corpo do erro
+﻿# Debug puntual: reproduz a aprovacao 500 e imprime o corpo do erro
 $ErrorActionPreference = "Continue"
-$base = "http://127.0.0.1:8787"
+$base = if ($env:API_URL) { $env:API_URL } else { "http://127.0.0.1:8787" }
 $tmp = "C:\Users\Rene Silva\AppData\Local\Temp\opencode"
 $bodyFile = Join-Path $tmp "e2e-body.json"
 $payloadFile = Join-Path $tmp "e2e-payload.json"
@@ -13,27 +13,29 @@ function Invoke-JsonSend($metodo, $rota, $obj, $token) {
   if ($token) { $reqArgs += @("-H", ("Authorization: Bearer " + $token)) }
   $code = curl.exe @reqArgs ($base + $rota)
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = [int]$code; body = $body }
 }
 function Invoke-GetAuth($rota, $token) {
   $code = curl.exe -s -o $bodyFile -w "%{http_code}" -H ("Authorization: Bearer " + $token) ($base + $rota)
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = [int]$code; body = $body }
 }
 
 $foto = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 
 # Login admin
-$la = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = "admin123" } $null
+# Credenciais de teste: so em .dev.vars (gitignored) — nada versionado.
+. (Join-Path $PSScriptRoot "..\credenciais.ps1")
+$la = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = $senhaAdmin } $null
 $tokenAdmin = ($la.body | ConvertFrom-Json).token
 
 # Pai
-$rp = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Pai Debug Aprov"; email = "e2e.debug.pai@x.com"; senha = "SenhaDbg123" } $null
+$rp = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Pai Debug Aprov"; email = "e2e.debug.pai@x.com"; senha = "SenhaDbg#12" } $null
 $paiId = $null
 if ($rp.code -eq 201) { $paiId = ($rp.body | ConvertFrom-Json).usuario.id }
-$lp = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.debug.pai@x.com"; senha = "SenhaDbg123" } $null
+$lp = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.debug.pai@x.com"; senha = "SenhaDbg#12" } $null
 $tokenPai = ($lp.body | ConvertFrom-Json).token
 Write-Output ("paiId=" + $paiId + " login=" + $lp.code)
 
@@ -43,7 +45,7 @@ $cad = Invoke-JsonSend "POST" "/api/cadastro" @{
   responsavelNome = "Pai Debug Aprov"; cpf = "99100001643"
   responsavel2Nome = "Mae Debug Aprov"; cpf2 = "99100001724"
   status = "PENDENTE_VALIDACAO"; usuario_id = $paiId
-} $null
+} $tokenPai
 Write-Output ("cadastro=" + $cad.code + " body=" + $cad.body)
 
 $alunoId = $null

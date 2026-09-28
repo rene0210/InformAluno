@@ -1,6 +1,6 @@
-# E2E — Notificacoes por e-mail (SMTP em modo log + gatilhos)
+﻿# E2E — Notificacoes por e-mail (modo log OU SMTP real + gatilhos)
 $ErrorActionPreference = "Continue"
-$base = "http://127.0.0.1:8787"
+$base = if ($env:API_URL) { $env:API_URL } else { "http://127.0.0.1:8787" }
 $tmp = "C:\Users\Rene Silva\AppData\Local\Temp\opencode"
 $bodyFile = Join-Path $tmp "e2e-body.json"
 $payloadFile = Join-Path $tmp "e2e-payload.json"
@@ -19,7 +19,7 @@ function Invoke-JsonSend($metodo, $rota, $obj, $token) {
   if ($token) { $reqArgs += @("-H", ("Authorization: Bearer " + $token)) }
   $code = curl.exe @reqArgs ($base + $rota)
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -30,7 +30,7 @@ function Invoke-GetAuth($rota, $token) {
     $code = curl.exe -s -o $bodyFile -w "%{http_code}" ($base + $rota)
   }
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -49,7 +49,9 @@ function Check($nome, $condicao, $detalhe) {
 }
 
 # ===== 1. Login admin =====
-$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = "admin123" } $null
+# Credenciais de teste: so em .dev.vars (gitignored) — nada versionado.
+. (Join-Path $PSScriptRoot "..\credenciais.ps1")
+$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = $senhaAdmin } $null
 $tokenAdmin = $null
 if ($loginAdmin.code -eq 200) { $tokenAdmin = ($loginAdmin.body | ConvertFrom-Json).token }
 Check "Login admin" ($tokenAdmin -ne $null) ("[HTTP " + $loginAdmin.code + "]")
@@ -63,37 +65,76 @@ Check "POST /api/admin/testar-email sem token -> 401" ($semTok.code -eq 401) ("[
 $paraRuim = Invoke-JsonSend "POST" "/api/admin/testar-email" @{ para = "nao-e-email" } $tokenAdmin
 Check "Destino invalido -> 400" ($paraRuim.code -eq 400) ("[HTTP " + $paraRuim.code + "]")
 
-# ===== 4. Teste em MODO LOG (sem SMTP configurado) + conectividade =====
-$tst = Invoke-JsonSend "POST" "/api/admin/testar-email" @{ para = "e2e.email.destino@x.com" } $tokenAdmin
+# ===== 4. Envio de teste (modo log, SMTP ou Resend) + prova =====
+# Destino configurável: a Resend em modo teste (sem domínio verificado)
+# só aceita enviar para o e-mail verificado da conta — use
+# E2E_EMAIL_DESTINO=seu.email@gmail.com para ter um envio real de ponta a ponta.
+$destinoTeste = if ($env:E2E_EMAIL_DESTINO) { $env:E2E_EMAIL_DESTINO } else { "e2e.email.destino@x.com" }
+$tst = Invoke-JsonSend "POST" "/api/admin/testar-email" @{ para = $destinoTeste } $tokenAdmin
 $tstData = $null
 if ($tst.code -eq 200) { $tstData = $tst.body | ConvertFrom-Json }
 Check "Teste de e-mail responde 200" ($tst.code -eq 200) ("[HTTP " + $tst.code + "]")
-Check "Sem credencial -> configurado=false" (($tstData -ne $null) -and (-not $tstData.configurado)) ("" + $tstData.configurado)
-Check "Sem credencial -> modo=log" (($tstData -ne $null) -and ($tstData.modo -eq "log")) ("" + $tstData.modo)
-Check "Conexao SMTP responde 220" (($tstData -ne $null) -and ($tstData.conexao -like "OK*")) ("" + $tstData.conexao)
+# O modo depende do ambiente: com credencial (.dev.vars / secret) ele ENVIA,
+# sem credencial fica em log. O e2e valida o comportamento do modo ativo.
+$credencial = ($tstData -ne $null) -and ($tstData.configurado -eq $true)
+# Resend em modo teste (conta sem domínio verificado) recusa terceiros com 403
+# e orienta a verificar um domínio — comportamento documentado do provedor.
+$restritoResend = ($tstData -ne $null) -and ($tstData.transporte -eq "resend") -and ("$($tstData.erro)" -match "verify a domain")
+if ($credencial) {
+  Check "Credencial de e-mail ativa -> configurado=true" ($tstData.configurado -eq $true) ("transporte=" + $tstData.transporte)
+  if ($restritoResend) {
+    Check "Resend em modo teste: terceiros exigem dominio verificado" $true $tstData.erro
+  } else {
+    Check "Credencial de e-mail ativa -> modo=enviado" ($tstData.modo -eq "enviado") ("modo=" + $tstData.modo + " erro=" + $tstData.erro)
+  }
+} else {
+  Check "Sem credencial -> configurado=false" (($tstData -ne $null) -and (-not $tstData.configurado)) ("" + $tstData.configurado)
+  Check "Sem credencial -> modo=log" (($tstData -ne $null) -and ($tstData.modo -eq "log")) ("" + $tstData.modo)
+}
+$provaEnvio = if ($restritoResend) {
+  "Restricao da conta Resend (sem dominio verificado) — nao e falha do sistema"
+} else {
+  "" + $tstData.conexao
+}
+Check "Prova de envio (SMTP 220 ou aceite da Resend)" (($tstData -ne $null) -and (($tstData.conexao -like "OK*") -or $restritoResend)) $provaEnvio
 
 # ===== 5. Auto-cadastro do pai -> gatilho boas-vindas =====
-$rPai = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Pai Teste Email"; email = "e2e.email.pai@x.com"; senha = "SenhaPai123" } $null
+$rPai = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Pai Teste Email"; email = "e2e.email.pai@x.com"; senha = "SenhaPai#12" } $null
 Check "Registro pai (gatilho boas-vindas)" ($rPai.code -eq 201) ("[HTTP " + $rPai.code + "]")
 $paiId = $null
 if ($rPai.code -eq 201) { $paiId = ($rPai.body | ConvertFrom-Json).usuario.id }
 
-$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.pai@x.com"; senha = "SenhaPai123" } $null
+$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.pai@x.com"; senha = "SenhaPai#12" } $null
 $tokenPai = $null
 if ($loginPai.code -eq 200) { $tokenPai = ($loginPai.body | ConvertFrom-Json).token }
 Check "Login pai (senha original)" ($tokenPai -ne $null) ("[HTTP " + $loginPai.code + "]")
 
-# ===== 6. Recuperacao de senha: link REAL no modo log =====
+# ===== 6. Recuperacao de senha =====
+# Sem credencial a API devolve o link na resposta (modo log puro). Com
+# credencial o link NUNCA volta na resposta — sai por e-mail e, se o envio
+# for recusado (ex.: Resend em modo teste), o e2e lê o token gravado no
+# banco local (scripts/ler-token-reset.mjs) para concluir a troca.
 $rec = Invoke-JsonSend "POST" "/api/recuperar-senha" @{ email = "e2e.email.pai@x.com" } $null
 Check "Recuperar-senha responde 200" ($rec.code -eq 200) ("[HTTP " + $rec.code + "]")
 $temLink = $false
 $linkToken = $null
+$origemToken = "sem token"
 if ($rec.body -match "linkSimulado") {
   $temLink = $true
+  $origemToken = "linkSimulado na resposta (modo log)"
   $m = [regex]::Match($rec.body, 'redefinir-senha/([0-9a-fA-F\-]+)')
   if ($m.Success) { $linkToken = $m.Groups[1].Value }
 }
-Check "Modo log devolve linkSimulado" ($temLink -and ($linkToken -ne $null)) ""
+if (-not $linkToken) {
+  $lido = @(node (Join-Path $PSScriptRoot "..\ler-token-reset.mjs") "e2e.email.pai@x.com" 2>$null)
+  $cand = $lido | Where-Object { $_ -and $_.ToString().Trim() -ne "" } | Select-Object -Last 1
+  if ($cand) {
+    $linkToken = $cand.ToString().Trim()
+    $temLink = $true
+    $origemToken = "token lido do banco local (link saiu por e-mail)"
+  }
+}
+Check "Token do reset obtido" ($temLink -and ($linkToken -ne $null)) $origemToken
 Check "Link aponta para /redefinir-senha/<token>" (($linkToken -ne $null) -and ($linkToken.Length -gt 10)) ("" + $linkToken)
 
 # ===== 7. Conclusao da troca -> gatilho confirmacao =====
@@ -106,11 +147,11 @@ if ($linkToken) {
       @{ id = 2; resposta = "Berlim" },
       @{ id = 3; resposta = "Amarelo" }
     )
-    novaSenha = "NovaSenha456"
+    novaSenha = "NovaSenha#45"
   } $null
   Check "Troca de senha concluida (gatilho confirmacao)" ($troca.code -eq 200) ("[HTTP " + $troca.code + "]")
 
-  $loginNova = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.pai@x.com"; senha = "NovaSenha456" } $null
+  $loginNova = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.pai@x.com"; senha = "NovaSenha#45" } $null
   Check "Login com a NOVA senha" ($loginNova.code -eq 200) ("[HTTP " + $loginNova.code + "]")
   if ($loginNova.code -eq 200) { $tokenPai = ($loginNova.body | ConvertFrom-Json).token }
 } else {
@@ -118,20 +159,20 @@ if ($linkToken) {
 }
 
 # ===== 8. Usuario descartavel: gatilhos admin (senha + cargo) =====
-$rUser = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "User Teste Email"; email = "e2e.email.user@x.com"; senha = "SenhaUser123" } $null
+$rUser = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "User Teste Email"; email = "e2e.email.user@x.com"; senha = "SenhaUser#12" } $null
 Check "Registro usuario descartavel" ($rUser.code -eq 201) ("[HTTP " + $rUser.code + "]")
 $userId = $null
 if ($rUser.code -eq 201) { $userId = ($rUser.body | ConvertFrom-Json).usuario.id }
 
 if ($userId) {
-  $aSenha = Invoke-JsonSend "PATCH" ("/api/admin/usuarios/" + $userId + "/senha") @{ novaSenha = "SenhaNova789" } $tokenAdmin
+  $aSenha = Invoke-JsonSend "PATCH" ("/api/admin/usuarios/" + $userId + "/senha") @{ novaSenha = "SenhaNova#78" } $tokenAdmin
   Check "Admin redefinir senha (gatilho)" ($aSenha.code -eq 200) ("[HTTP " + $aSenha.code + "]")
 
   $aRole = Invoke-JsonSend "PATCH" ("/api/admin/usuarios/" + $userId + "/role") @{ novoRole = "COORDENADOR" } $tokenAdmin
   Check "Admin alterar cargo (gatilho)" ($aRole.code -eq 200) ("[HTTP " + $aRole.code + "]")
 }
 
-$loginCoord = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.user@x.com"; senha = "SenhaNova789" } $null
+$loginCoord = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.user@x.com"; senha = "SenhaNova#78" } $null
 $tokenCoord = $null
 if ($loginCoord.code -eq 200) { $tokenCoord = ($loginCoord.body | ConvertFrom-Json).token }
 Check "Login coordenador (senha do admin funciona)" ($tokenCoord -ne $null) ("[HTTP " + $loginCoord.code + "]")
@@ -171,7 +212,7 @@ if ($alunoId) {
 }
 
 # ===== 11. Professor: notas + acompanhamento =====
-$rProf = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Prof Teste Email"; email = "e2e.email.prof@x.com"; senha = "SenhaProf123" } $null
+$rProf = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Prof Teste Email"; email = "e2e.email.prof@x.com"; senha = "SenhaProf#12" } $null
 Check "Registro professor" ($rProf.code -eq 201) ("[HTTP " + $rProf.code + "]")
 $profId = $null
 if ($rProf.code -eq 201) { $profId = ($rProf.body | ConvertFrom-Json).usuario.id }
@@ -181,7 +222,7 @@ if ($profId) {
   Check "Promocao para PROFESSOR" ($promo.code -eq 200) ("[HTTP " + $promo.code + "]")
 }
 
-$loginProf = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.prof@x.com"; senha = "SenhaProf123" } $null
+$loginProf = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.email.prof@x.com"; senha = "SenhaProf#12" } $null
 $tokenProf = $null
 if ($loginProf.code -eq 200) { $tokenProf = ($loginProf.body | ConvertFrom-Json).token }
 Check "Login professor" ($tokenProf -ne $null) ("[HTTP " + $loginProf.code + "]")

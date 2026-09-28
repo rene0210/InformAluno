@@ -1,6 +1,6 @@
-# E2E — Atestado anexado pelo responsavel (upload + visualizacao escolar)
+﻿# E2E — Atestado anexado pelo responsavel (upload + visualizacao escolar)
 $ErrorActionPreference = "Continue"
-$base = "http://127.0.0.1:8787"
+$base = if ($env:API_URL) { $env:API_URL } else { "http://127.0.0.1:8787" }
 $tmp = "C:\Users\Rene Silva\AppData\Local\Temp\opencode"
 $bodyFile = Join-Path $tmp "e2e-body.json"
 $payloadFile = Join-Path $tmp "e2e-payload.json"
@@ -19,7 +19,7 @@ function Invoke-JsonSend($metodo, $rota, $obj, $token) {
   if ($token) { $reqArgs += @("-H", ("Authorization: Bearer " + $token)) }
   $code = curl.exe @reqArgs ($base + $rota)
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -30,7 +30,7 @@ function Invoke-GetAuth($rota, $token) {
     $code = curl.exe -s -o $bodyFile -w "%{http_code}" ($base + $rota)
   }
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -53,7 +53,9 @@ $png1px = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAA
 $pdfTeste = "data:application/pdf;base64,JVBERi0xLjQKJcTl8uXrpOg0MTGCg=="
 
 # ===== 1. Login admin =====
-$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = "admin123" } $null
+# Credenciais de teste: so em .dev.vars (gitignored) — nada versionado.
+. (Join-Path $PSScriptRoot "..\credenciais.ps1")
+$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = $senhaAdmin } $null
 $tokenAdmin = $null
 if ($loginAdmin.code -eq 200) { $tokenAdmin = ($loginAdmin.body | ConvertFrom-Json).token }
 Check "Login admin" ($tokenAdmin -ne $null) ("[HTTP " + $loginAdmin.code + "]")
@@ -61,7 +63,7 @@ if (-not $tokenAdmin) { Write-Output "SEM TOKEN ADMIN - abortando"; exit 1 }
 
 # ===== 2. Responsavel (pai) descartavel =====
 $registroPai = Invoke-JsonSend "POST" "/api/auth/registro" @{
-  nome = "Pai Teste Atestado"; email = "e2e.atestado.pai@x.com"; senha = "SenhaAtest123"
+  nome = "Pai Teste Atestado"; email = "e2e.atestado.pai@x.com"; senha = "SenhaAtest#12"
 } $null
 $paiId = $null
 if ($registroPai.code -eq 201) {
@@ -69,7 +71,7 @@ if ($registroPai.code -eq 201) {
 } elseif ($registroPai.code -eq 400) {
   Write-Output "INFO  pai ja existe de execucao anterior (reuso)"
 }
-$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.atestado.pai@x.com"; senha = "SenhaAtest123" } $null
+$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.atestado.pai@x.com"; senha = "SenhaAtest#12" } $null
 $tokenPai = $null
 if ($loginPai.code -eq 200) { $tokenPai = ($loginPai.body | ConvertFrom-Json).token }
 Check "Login pai" ($tokenPai -ne $null) ("[HTTP " + $loginPai.code + "]")
@@ -193,11 +195,11 @@ Check "POST acompanhamento sem token -> 401" ($acSemTok.code -eq 401) ("[HTTP " 
 
 # ===== 13. Intruso (sem vinculo) nao anexa =====
 $regIntr = Invoke-JsonSend "POST" "/api/auth/registro" @{
-  nome = "Intruso Teste Atestado"; email = "e2e.atestado.intruso@x.com"; senha = "SenhaIntr123"
+  nome = "Intruso Teste Atestado"; email = "e2e.atestado.intruso@x.com"; senha = "SenhaIntr#12"
 } $null
 $intrusoId = $null
 if ($regIntr.code -eq 201) { $intrusoId = ($regIntr.body | ConvertFrom-Json).usuario.id }
-$loginIntr = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.atestado.intruso@x.com"; senha = "SenhaIntr123" } $null
+$loginIntr = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.atestado.intruso@x.com"; senha = "SenhaIntr#12" } $null
 $tokenIntruso = $null
 if ($loginIntr.code -eq 200) { $tokenIntruso = ($loginIntr.body | ConvertFrom-Json).token }
 

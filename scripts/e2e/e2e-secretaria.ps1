@@ -1,6 +1,6 @@
-# E2E — Secretaria: ajuste de fotos SEM funcao de excluir
+﻿# E2E — Secretaria: ajuste de fotos SEM funcao de excluir
 $ErrorActionPreference = "Continue"
-$base = "http://127.0.0.1:8787"
+$base = if ($env:API_URL) { $env:API_URL } else { "http://127.0.0.1:8787" }
 $tmp = "C:\Users\Rene Silva\AppData\Local\Temp\opencode"
 $bodyFile = Join-Path $tmp "e2e-body.json"
 $payloadFile = Join-Path $tmp "e2e-payload.json"
@@ -19,7 +19,7 @@ function Invoke-JsonSend($metodo, $rota, $obj, $token) {
   if ($token) { $args += @("-H", ("Authorization: Bearer " + $token)) }
   $code = curl.exe @args ($base + $rota)
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -30,7 +30,7 @@ function Invoke-GetAuth($rota, $token) {
     $code = curl.exe -s -o $bodyFile -w "%{http_code}" ($base + $rota)
   }
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -49,21 +49,23 @@ function Check($nome, $condicao, $detalhe) {
 }
 
 # ===== 1. Login admin =====
-$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = "admin123" } $null
+# Credenciais de teste: so em .dev.vars (gitignored) — nada versionado.
+. (Join-Path $PSScriptRoot "..\credenciais.ps1")
+$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = $senhaAdmin } $null
 $tokenAdmin = $null
 if ($loginAdmin.code -eq 200) { $tokenAdmin = ($loginAdmin.body | ConvertFrom-Json).token }
 Check "Login admin" ($tokenAdmin -ne $null) ("[HTTP " + $loginAdmin.code + "]")
 if (-not $tokenAdmin) { Write-Output "SEM TOKEN ADMIN - abortando"; exit 1 }
 
 # ===== 2. Criar usuaria da secretaria + promover (fluxo do painel admin) =====
-$rSec = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Sec Teste Fotos"; email = "e2e.secretaria@x.com"; senha = "SenhaForte123" } $null
+$rSec = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Sec Teste Fotos"; email = "e2e.secretaria@x.com"; senha = "SenhaForte#12" } $null
 Check "Registro auto-cadastro (RESPONSAVEL)" ($rSec.code -eq 201) ("[HTTP " + $rSec.code + "]")
 $secId = ($rSec.body | ConvertFrom-Json).usuario.id
 
 $prom = Invoke-JsonSend "PATCH" ("/api/admin/usuarios/" + $secId + "/role") @{ novoRole = "SECRETARIA" } $tokenAdmin
 Check "Admin promove para SECRETARIA" ($prom.code -eq 200) ("[HTTP " + $prom.code + "]")
 
-$loginSec = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.secretaria@x.com"; senha = "SenhaForte123" } $null
+$loginSec = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.secretaria@x.com"; senha = "SenhaForte#12" } $null
 $tokenSec = $null
 if ($loginSec.code -eq 200) { $tokenSec = ($loginSec.body | ConvertFrom-Json).token }
 Check "Login secretaria" ($tokenSec -ne $null) ("[HTTP " + $loginSec.code + "]")

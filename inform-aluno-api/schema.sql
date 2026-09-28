@@ -38,11 +38,12 @@ CREATE TABLE IF NOT EXISTS usuarios (
   FOREIGN KEY (aluno_id) REFERENCES alunos(id)
 );
 
--- Admin inicial: hash PBKDF2 pré-computado da senha padrão "admin123"
+-- Admin inicial: hash PBKDF2 pré-computado da senha padrão 
 -- (formato pbkdf2$<iterações>$<salt>$<hash> — ver inform-aluno-api/src/senha.ts).
--- Troque a senha no primeiro acesso.
+-- Troque a senha no primeiro acesso — o padrão de senha forte é cobrado
+-- em todo ponto que cria/troca senha (registro, painel e "esqueci a senha").
 INSERT OR IGNORE INTO usuarios (nome, email, senha, role) 
-VALUES ('Administrador Master', 'admin@informaluno.com', 'pbkdf2$jQ2ZBvlKOv0w3SSe7d8+ww==$9tUFxXjlnFmrtrSZssgWp2HFkfPPHXgsQswbZGJi6EQ=', 'ADMIN');
+VALUES ('Administrador Master', 'admin@informaluno.com', 'pbkdf2$100000$xAmaoTIDvvq+G+W888z6bQ==$IuH595iyvsdp1w6dnrSHjWtpgcL/SqOcZksdgBjdAWs=', 'ADMIN');
 
 -- Cadastro de segurança do usuário: CPF +3 perguntas/respostas
 -- usado para validar a identidade antes de liberar a troca de senha.

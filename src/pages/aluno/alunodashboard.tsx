@@ -14,6 +14,7 @@ import {
 } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface AlunoInfo {
   id: number;
@@ -50,7 +51,7 @@ export const AlunoDashboard: React.FC = () => {
 
   const carregarDados = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/aluno/dashboard", {
+      const res = await fetch(`${API}/api/aluno/dashboard`, {
         headers: authHeaders(),
       });
       if (res.ok) {

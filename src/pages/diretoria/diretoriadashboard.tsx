@@ -5,6 +5,7 @@ import { AnotacoesLista } from "../../components/anotacoes";
 import { ChatPainel } from "../chat/chat";
 import { finalizarSessao } from "../../components/sessao";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface Resumo {
   totalAlunosHoje: number;
@@ -155,7 +156,7 @@ export const DiretoriaDashboard: React.FC = () => {
 
   const carregarDados = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/diretoria/dashboard", {
+      const res = await fetch(`${API}/api/diretoria/dashboard`, {
         headers: authHeaders(),
       });
       if (res.ok) {
@@ -180,7 +181,7 @@ export const DiretoriaDashboard: React.FC = () => {
       }
 
       // Anotações de pais e professores (mesma exigência de sessão)
-      const resAnot = await fetch("http://127.0.0.1:8787/api/diretoria/acompanhamentos", {
+      const resAnot = await fetch(`${API}/api/diretoria/acompanhamentos`, {
         headers: authHeaders(),
       });
       if (resAnot.ok) {
@@ -193,7 +194,7 @@ export const DiretoriaDashboard: React.FC = () => {
       }
 
       // Log de acessos + terceiros criados (últimos 30 dias)
-      const resLog = await fetch("http://127.0.0.1:8787/api/diretoria/log", {
+      const resLog = await fetch(`${API}/api/diretoria/log`, {
         headers: authHeaders(),
       });
       if (resLog.ok) {

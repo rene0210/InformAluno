@@ -14,7 +14,9 @@ import {
 } from "react-bootstrap";
 import { useLocation, useNavigate } from "react-router-dom";
 import { TermosModal, PrivacidadeModal } from "../../components/legaltermos";
+import { RegrasSenha } from "../../components/regrassenha";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 export const Home: React.FC = () => {
   const navigate = useNavigate();
@@ -23,6 +25,9 @@ export const Home: React.FC = () => {
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
+  // Login errado abre o alerta com as normas da senha (orientação: a conta
+  // pode ter sido criada/redefinida com o padrão novo)
+  const [mostrarRegrasSenha, setMostrarRegrasSenha] = useState(false);
 
   // Vem do timeout de inatividade (15 min): avisa o usuário por que saiu
   const localizacao = useLocation();
@@ -58,7 +63,7 @@ export const Home: React.FC = () => {
     setEnviandoEsqueci(true);
 
     try {
-      const resposta = await fetch("http://127.0.0.1:8787/api/recuperar-senha", {
+      const resposta = await fetch(`${API}/api/recuperar-senha`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: emailEsqueci }),
@@ -82,10 +87,11 @@ export const Home: React.FC = () => {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErro(null);
+    setMostrarRegrasSenha(false);
     setCarregando(true);
 
     try {
-      const resposta = await fetch("http://127.0.0.1:8787/api/auth/login", {
+      const resposta = await fetch(`${API}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, senha }),
@@ -121,6 +127,8 @@ export const Home: React.FC = () => {
         }
       } else {
         setErro(dados.error || "E-mail ou senha incorretos.");
+        // Orientação: por que a senha pode estar "errada" mesmo boa na memória
+        setMostrarRegrasSenha(true);
       }
     } catch (err) {
       console.error("Erro na tentativa de login:", err);
@@ -215,6 +223,12 @@ export const Home: React.FC = () => {
                   </Alert>
                 )}
                 {erro && <Alert variant="danger">{erro}</Alert>}
+                {mostrarRegrasSenha && (
+                  <RegrasSenha
+                    senha={senha}
+                    titulo="Senha incorreta? Confira o padrão exigido da senha:"
+                  />
+                )}
 
                 <Form onSubmit={handleLogin}>
                   <Form.Group className="mb-3">
@@ -240,7 +254,10 @@ export const Home: React.FC = () => {
                       className="form-control-custom"
                       placeholder="••••••••"
                       value={senha}
-                      onChange={(e) => setSenha(e.target.value)}
+                      onChange={(e) => {
+                        setSenha(e.target.value);
+                        setMostrarRegrasSenha(false);
+                      }}
                       required
                     />
                   </Form.Group>

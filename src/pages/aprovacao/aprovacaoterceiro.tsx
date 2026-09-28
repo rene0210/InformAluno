@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Alert, Button, Card, Container, Spinner } from "react-bootstrap";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface Solicitacao {
   aluno_nome: string;
@@ -25,7 +26,7 @@ export const AprovacaoTerceiro: React.FC = () => {
   useEffect(() => {
     const carregar = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8787/api/aprovacao/${token}`);
+        const res = await fetch(`${API}/api/aprovacao/${token}`);
         const data = await res.json();
         if (res.ok) {
           setSolicitacao(data);
@@ -45,7 +46,7 @@ export const AprovacaoTerceiro: React.FC = () => {
     setDecidindo(true);
     setErro(null);
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/aprovacao/${token}`, {
+      const res = await fetch(`${API}/api/aprovacao/${token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ decisao }),

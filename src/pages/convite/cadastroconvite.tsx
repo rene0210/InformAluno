@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams } from "react-router-dom";
 import { Container, Card, Form, Button, Alert, Spinner } from "react-bootstrap";
+import { API } from "../../components/api";
 
 export const CadastroConvidado: React.FC = () => {
   const { token } = useParams<{ token: string }>();
@@ -24,7 +25,7 @@ export const CadastroConvidado: React.FC = () => {
   useEffect(() => {
     const buscarConvite = async () => {
       try {
-        const res = await fetch(`http://127.0.0.1:8787/api/convite/${token}`);
+        const res = await fetch(`${API}/api/convite/${token}`);
         const data = await res.json();
 
         if (res.ok) {
@@ -62,7 +63,7 @@ export const CadastroConvidado: React.FC = () => {
     }
 
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/convite/${token}/cadastrar`, {
+      const res = await fetch(`${API}/api/convite/${token}/cadastrar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nome, cpf, telefone, foto }),

@@ -9,6 +9,7 @@ import {
   urlAplicacao,
   testarConexaoSMTP,
   mailConfigFromEnv,
+  resendFromEnv,
 } from "./mailer";
 import {
   emailBoasVindas,
@@ -27,7 +28,7 @@ import {
   emailConviteAprovacao,
   emailConviteResultado,
 } from "./emailtemplates";
-import { hashSenha, verificarSenha } from "./senha";
+import { hashSenha, verificarSenha, recusaSenha } from "./senha";
 import { loginBloqueado, registrarFalha, limparFalhas } from "./ratelimit";
 
 interface Env {
@@ -349,8 +350,12 @@ app.patch("/api/admin/usuarios/:id/senha", async (c) => {
     const id = c.req.param("id");
     const { novaSenha } = await c.req.json();
 
-    if (!novaSenha || novaSenha.length < 4) {
-      return c.json({ error: "A nova senha deve ter pelo menos 4 caracteres." }, 400);
+    // Padrão de segurança da senha (mínimo de 8 caracteres, maiúscula,
+    // minúscula, especial e sem sequência) — mesma regra do registro e da
+    // redefinição pelo link de e-mail.
+    const recusa = recusaSenha(String(novaSenha ?? ""));
+    if (recusa) {
+      return c.json(recusa, 400);
     }
 
     const usuario = await c.env.DB.prepare("SELECT nome, email FROM usuarios WHERE id = ?")
@@ -588,6 +593,13 @@ app.post("/api/auth/registro", async (c) => {
       return c.json({ error: "Preencha todos os campos obrigatórios." }, 400);
     }
 
+    // Conta nova só nasce com senha forte (o login não cobra nada —
+    // cobrança é aqui, onde a senha é escolhida).
+    const recusa = recusaSenha(String(senha));
+    if (recusa) {
+      return c.json(recusa, 400);
+    }
+
     // Whitelist: cargos que podem ser criados pelo auto-cadastro público.
     // ADMIN/DIRETOR só podem ser atribuídos por um administrador já logado.
     const rolesPublicos = ["RESPONSAVEL", "PORTARIA", "MOTORISTA"];
@@ -795,7 +807,17 @@ app.post("/api/recuperar-senha", async (c) => {
       "O link expira em 30 minutos.";
 
     if (!usuario) {
-      return c.json({ success: true, message: mensagem }, 200);
+      // E-mail fora da base: aviso em VERMELHO na tela (decisão de produto,
+      // pedida para a tela "Esqueceu a senha"). Custo: quem consulta passa
+      // a descobrir quem tem conta — manter a resposta genérica seria a
+      // alternativa que esconde isso.
+      return c.json(
+        {
+          error:
+            "E-mail não cadastrado. Confira o endereço digitado ou fale com a secretaria.",
+        },
+        404
+      );
     }
 
     const token = crypto.randomUUID();
@@ -809,9 +831,13 @@ app.post("/api/recuperar-senha", async (c) => {
     const link = `${urlAplicacao(c.env)}/redefinir-senha/${token}`;
     console.log(`[RECUPERAÇÃO DE SENHA] Link para ${usuario.email}: ${link}`);
 
-    // Envio real por SMTP. Sem credencial configurada (modo log), o link
-    // continua vindo na resposta para manter o fluxo de testes do front.
-    const envio = await notificar(
+    // Envio real (Resend ou SMTP). O link volta na resposta SOMENTE quando
+    // não há credencial nenhuma (modo log puro, dev local) — é o que
+    // mantém o fluxo de testes do front andando. Com credencial configurada
+    // o link NUNCA sai na resposta, mesmo que o envio falhe: senão qualquer
+    // um poderia pedir o reset de uma conta de terceiro e capturar o link.
+    const temTransporte = Boolean(resendFromEnv(c.env)) || Boolean(mailConfigFromEnv(c.env));
+    await notificar(
       c.env,
       [usuario.email],
       "Redefinição de senha — InformAluno",
@@ -819,7 +845,7 @@ app.post("/api/recuperar-senha", async (c) => {
     );
 
     return c.json(
-      envio.modo === "enviado"
+      temTransporte
         ? { success: true, message: mensagem }
         : { success: true, message: mensagem, linkSimulado: link },
       200
@@ -892,8 +918,10 @@ app.post("/api/recuperar-senha/:token", async (c) => {
         400
       );
     }
-    if (!novaSenha || String(novaSenha).length < 4) {
-      return c.json({ error: "A nova senha deve ter pelo menos 4 caracteres." }, 400);
+    // "Esqueci a senha": a nova senha passa pelo mesmo padrão do registro.
+    const recusa = recusaSenha(String(novaSenha ?? ""));
+    if (recusa) {
+      return c.json(recusa, 400);
     }
 
     const ids: number[] = perguntas.map((p: { id?: number }) => Number(p?.id));
@@ -1828,8 +1856,16 @@ app.get("/api/diretoria/dashboard", async (c) => {
 // Listar candidatos ao reconhecimento (fotos e dados para comparação facial no navegador)
 app.get("/api/verificar/candidatos", async (c) => {
   try {
-    const candidatos = await c.env.DB.prepare(
-      `
+    const usuarioId = c.get("usuarioId");
+    // Esta lista devolve FOTO de menor, então o recorte importa: a portaria
+    // de verdade precisa da escola inteira, mas o responsável entra pela
+    // /escolha e só reconhece o PRÓPRIO filho na /portaria. Para ele a
+    // consulta sai filtrada pelo mesmo vínculo das rotas /api/painel e
+    // /api/cadastro/filhos (responsavel_usuario + fallback de CPF) e sem a
+    // lista de professores — nada de baixar rosto de criança alheia.
+    const soPropriosFilhos = c.get("usuarioRole") === "RESPONSAVEL";
+
+    const selectAlunos = `
       SELECT 
         a.id,
         a.nome,
@@ -1845,20 +1881,37 @@ app.get("/api/verificar/candidatos", async (c) => {
       FROM alunos a
       LEFT JOIN responsaveis r1 ON a.responsavel_id = r1.id
       LEFT JOIN responsaveis r2 ON a.responsavel2_id = r2.id
-      LEFT JOIN responsaveis r3 ON a.responsavel3_id = r3.id
-      ORDER BY a.id DESC
-    `
-    ).all();
+      LEFT JOIN responsaveis r3 ON a.responsavel3_id = r3.id`;
+
+    const apenasOsSeusFilhos = `
+      WHERE
+        a.responsavel_id IN (SELECT responsavel_id FROM responsavel_usuario WHERE usuario_id = ?)
+        OR a.responsavel2_id IN (SELECT responsavel_id FROM responsavel_usuario WHERE usuario_id = ?)
+        OR a.responsavel3_id IN (SELECT responsavel_id FROM responsavel_usuario WHERE usuario_id = ?)
+        OR r1.cpf IN (SELECT cpf FROM seguranca_usuario WHERE usuario_id = ?)
+        OR r2.cpf IN (SELECT cpf FROM seguranca_usuario WHERE usuario_id = ?)
+        OR r3.cpf IN (SELECT cpf FROM seguranca_usuario WHERE usuario_id = ?)
+      ORDER BY a.id DESC`;
+
+    const candidatos = soPropriosFilhos
+      ? await c.env.DB.prepare(selectAlunos + apenasOsSeusFilhos)
+          .bind(usuarioId, usuarioId, usuarioId, usuarioId, usuarioId, usuarioId)
+          .all()
+      : await c.env.DB.prepare(selectAlunos + " ORDER BY a.id DESC").all();
 
     // Professores com foto cadastrada no painel deles também passam pelo
     // reconhecimento da portaria (saem marcados como eh_professor).
-    const profs = await c.env.DB.prepare(
-      "SELECT id, nome, materia, foto FROM professores WHERE foto IS NOT NULL ORDER BY id DESC"
-    ).all<{ id: number; nome: string; materia: string; foto: string }>();
+    let profs: { id: number; nome: string; materia: string; foto: string }[] = [];
+    if (!soPropriosFilhos) {
+      const res = await c.env.DB.prepare(
+        "SELECT id, nome, materia, foto FROM professores WHERE foto IS NOT NULL ORDER BY id DESC"
+      ).all<{ id: number; nome: string; materia: string; foto: string }>();
+      profs = res.results || [];
+    }
 
     const lista = [
       ...(candidatos.results || []),
-      ...(profs.results || []).map((p) => ({
+      ...profs.map((p) => ({
         id: p.id,
         nome: p.nome,
         matricula: "",
@@ -3756,6 +3809,8 @@ app.post("/api/admin/testar-email", async (c) => {
     const informado = String((corpo as { para?: unknown }).para || "").trim();
 
     const config = mailConfigFromEnv(c.env);
+    const resend = resendFromEnv(c.env);
+    const configurado = Boolean(config) || Boolean(resend);
 
     // Destino padrão: e-mail do próprio administrador logado
     let destino = informado;
@@ -3776,23 +3831,31 @@ app.post("/api/admin/testar-email", async (c) => {
       emailTeste()
     );
 
-    // Prova de conectividade: lê a saudação (220) do servidor SMTP
-    const conexao = await testarConexaoSMTP(
-      config ? config.host : "smtp.gmail.com",
-      config ? config.port : 465
-    );
+    // Prova do envio: na Resend a chave é do tipo "só envia" (não existe
+    // endpoint de ping), então a prova é o próprio envio; no SMTP, a
+    // saudação (220) do servidor.
+    const conexao = resend
+      ? envio.modo === "enviado"
+        ? { ok: true, detalhe: envio.detalhe || "Resend aceitou o envio" }
+        : { ok: false, detalhe: envio.error || "Resend não enviou" }
+      : await testarConexaoSMTP(
+          config ? config.host : "smtp.gmail.com",
+          config ? config.port : 465
+        );
 
     return c.json(
       {
         success: true,
-        configurado: Boolean(config),
+        configurado,
+        transporte: resend ? "resend" : config ? "smtp" : "log",
         modo: envio.modo,
         erro: envio.error || null,
+        detalhe: envio.detalhe || null,
         conexao: conexao.ok
           ? `OK — ${conexao.detalhe}`
           : `FALHOU — ${conexao.detalhe}`,
-        message: !config
-          ? "SMTP não configurado: e-mail registrado em modo log. Preencha o arquivo .dev.vars para envio real."
+        message: !configurado
+          ? "Sem credencial de e-mail (RESEND_API_KEY ou SMTP_*): e-mail registrado em modo log. Preencha o .dev.vars."
           : envio.modo === "enviado"
           ? `E-mail de teste enviado para ${destino}.`
           : `Falha no envio: ${envio.error}`,

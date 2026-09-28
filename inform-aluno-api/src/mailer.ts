@@ -1,10 +1,19 @@
 // ============================================================
-// ENVIO DE E-MAIL POR SMTP (TLS via cloudflare:sockets)
+// ENVIO DE E-MAIL — RESEND (API HTTP) ou SMTP (TLS via cloudflare:sockets)
 //
 // Configuração em desenvolvimento: inform-aluno-api/.dev.vars
 // (copie de .dev.vars.example e preencha); em produção use
-// `wrangler secret put SMTP_PASS` etc.
+// `wrangler secret put RESEND_API_KEY` / `SMTP_PASS` etc.
 //
+// RESEND (preferido quando RESEND_API_KEY existe):
+//   RESEND_API_KEY=re_...          chave da conta (https://resend.com/api-keys)
+//   RESEND_FROM=InformAluno <onboarding@resend.dev>
+//
+//   É o mesmo `resend.emails.send({ from, to, subject, html })` do SDK,
+//   chamado por fetch puro — aqui roda dentro do Worker do Cloudflare e
+//   um pacote a menos no bundle. A API é idêntica.
+//
+// SMTP (fallback — usado quando NÃO há chave da Resend):
 //   SMTP_HOST=smtp.gmail.com
 //   SMTP_PORT=465            465 = TLS direto | 587 = STARTTLS
 //   SMTP_USER=seu.email@gmail.com
@@ -12,8 +21,8 @@
 //   EMAIL_FROM=InformAluno Secretaria <seu.email@gmail.com>
 //   APP_URL=http://localhost:5173
 //
-// SEM credenciais tudo roda em MODO LOG: o conteúdo é impresso
-// no console e nenhuma operação do sistema falha por causa disso.
+// SEM credencial nenhuma das duas tudo roda em MODO LOG: o conteúdo é
+// impresso no console e nenhuma operação do sistema falha por causa disso.
 // As notificações NUNCA quebram o fluxo principal.
 // ============================================================
 
@@ -24,6 +33,8 @@ export interface MailEnv {
   SMTP_PORT?: string;
   SMTP_USER?: string;
   SMTP_PASS?: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM?: string;
   EMAIL_FROM?: string;
   APP_URL?: string;
 }
@@ -42,6 +53,13 @@ export interface ResultadoEnvio {
   ok: boolean;
   modo: "enviado" | "log" | "sem-destinatario";
   error?: string;
+  /** Prova do envio: id retornado pela Resend ou nada no SMTP. */
+  detalhe?: string;
+}
+
+export interface ResendConfig {
+  apiKey: string;
+  from: string;
 }
 
 // ------------------------------------------------------------
@@ -69,6 +87,18 @@ export const mailConfigFromEnv = (env: MailEnv): MailConfig | null => {
     fromHeader,
     fromAddress,
   };
+};
+
+// Resend — presente a chave, ela TEM PRIORIDADE sobre o SMTP.
+// O "de" aceita "Nome <endereco>" ou só o endereco (formato da API).
+export const resendFromEnv = (env: MailEnv): ResendConfig | null => {
+  const apiKey = (env.RESEND_API_KEY || "").trim();
+  if (!apiKey) return null;
+
+  const from = (env.RESEND_FROM || env.EMAIL_FROM || env.SMTP_USER || "").trim();
+  if (!from) return null;
+
+  return { apiKey, from };
 };
 
 // ------------------------------------------------------------
@@ -201,6 +231,53 @@ const exigir = (resposta: RespostaSmtp, esperados: number[], oque: string): void
 };
 
 // ------------------------------------------------------------
+// Resend (API HTTP)
+// ------------------------------------------------------------
+
+const RESEND_ENDPOINT = "https://api.resend.com/emails";
+
+// Mesmo contrato do SDK `resend.emails.send({ from, to, subject, html })`,
+// chamado por fetch puro: aqui o código roda dentro do Worker do
+// Cloudflare e não empacotamos o SDK.
+const resendEnviar = async (
+  config: ResendConfig,
+  destinatarios: string[],
+  assunto: string,
+  html: string
+): Promise<string> => {
+  const resposta = await fetch(RESEND_ENDPOINT, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: config.from,
+      to: destinatarios,
+      subject: assunto,
+      html,
+    }),
+  });
+
+  const corpo = (await resposta.json().catch(() => ({}))) as {
+    id?: string;
+    message?: string;
+  };
+
+  if (!resposta.ok) {
+    throw new Error(
+      `Resend recusou (HTTP ${resposta.status}): ${corpo.message || "sem detalhe"}`
+    );
+  }
+
+  return corpo.id || "";
+};
+
+// Prova de credencial: a Resend não tem endpoint de "ping" barato — a
+// chave enviada aqui é do tipo "só envia" (GET /domains devolve 401),
+// então a prova é o próprio envio: `notificar` devolve o id da mensagem.
+
+// ------------------------------------------------------------
 // Protocolo SMTP completo
 // ------------------------------------------------------------
 
@@ -309,14 +386,26 @@ export const notificar = async (
     return { ok: true, modo: "sem-destinatario" };
   }
 
+  const resend = resendFromEnv(env);
   const config = mailConfigFromEnv(env);
-  if (!config) {
+  if (!resend && !config) {
     console.log(`[EMAIL/LOG] Para: ${para.join(", ")} | Assunto: ${assunto}`);
     return { ok: true, modo: "log" };
   }
 
   try {
-    await smtpEnviar(config, para, assunto, html);
+    // Resend tem prioridade; SMTP fica como fallback sem chave.
+    if (resend) {
+      const id = await resendEnviar(resend, para, assunto, html);
+      console.log(
+        `[EMAIL/RESEND] Enviado para ${para.join(", ")} | ${assunto}${
+          id ? ` | id=${id}` : ""
+        }`
+      );
+      return { ok: true, modo: "enviado", detalhe: id ? `Resend id ${id}` : "Resend" };
+    }
+
+    await smtpEnviar(config as MailConfig, para, assunto, html);
     console.log(`[EMAIL] Enviado para ${para.join(", ")} | ${assunto}`);
     return { ok: true, modo: "enviado" };
   } catch (e) {

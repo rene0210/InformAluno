@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Container, Card, Form, Button, Navbar, Alert } from "react-bootstrap";
 import { useNavigate, useParams } from "react-router-dom";
+import { RegrasSenha } from "../../components/regrassenha";
+import { regrasPendentes, regrasEmUmaLinha } from "../../components/senhas";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 // Lista fixa de perguntas de segurança (id = identificador estável gravado no banco)
 const PERGUNTAS_SEGURANCA: { id: number; texto: string }[] = [
@@ -46,7 +49,7 @@ export const RedefinirSenha: React.FC = () => {
     const validar = async () => {
       try {
         const resposta = await fetch(
-          `http://127.0.0.1:8787/api/recuperar-senha/${token}`
+          `${API}/api/recuperar-senha/${token}`
         );
         const dados = await resposta.json();
 
@@ -104,6 +107,16 @@ export const RedefinirSenha: React.FC = () => {
       return;
     }
 
+    // Padrão de senha: a mesma checagem da API, mas avisando aqui para a
+    // pessoa não perder as perguntas já respondidas.
+    const pendentes = regrasPendentes(novaSenha);
+    if (pendentes.length > 0) {
+      setErro(
+        `Senha fora do padrão de segurança. ${regrasEmUmaLinha(pendentes)}`
+      );
+      return;
+    }
+
     const selecionadas = perguntasSel.filter((id): id is number => id !== null);
     if (selecionadas.length !== 3 || new Set(selecionadas).size !== 3) {
       setErro("Escolha3 perguntas de segurança distintas.");
@@ -114,7 +127,7 @@ export const RedefinirSenha: React.FC = () => {
 
     try {
       const resposta = await fetch(
-        `http://127.0.0.1:8787/api/recuperar-senha/${token}`,
+        `${API}/api/recuperar-senha/${token}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -135,6 +148,9 @@ export const RedefinirSenha: React.FC = () => {
       if (resposta.ok) {
         setSucesso(dados.message);
         setTimeout(() => navigate("/"), 2500);
+      } else if (Array.isArray(dados.erros) && dados.erros.length > 0) {
+        // A API recusou a senha: repete as normas não cumpridas no alerta
+        setErro(`${dados.error} ${regrasEmUmaLinha(dados.erros)}`);
       } else {
         setErro(dados.error || "Erro ao redefinir a senha.");
       }
@@ -299,6 +315,9 @@ export const RedefinirSenha: React.FC = () => {
                         required
                       />
                     </Form.Group>
+
+                    {/* Orientação permanente: ✓/○ acompanham o que está sendo digitado */}
+                    <RegrasSenha senha={novaSenha} />
 
                     <Button
                       type="submit"

@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { AnotacoesLista } from "../../components/anotacoes";
 import { ChatPainel } from "../chat/chat";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface NotaResumo {
   materia: string;
@@ -107,7 +108,7 @@ export const ProfessorDashboard: React.FC = () => {
 
   const carregar = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/professor/alunos", {
+      const res = await fetch(`${API}/api/professor/alunos`, {
         headers: authHeaders(),
       });
       if (!tratarResposta(res)) return;
@@ -126,7 +127,7 @@ export const ProfessorDashboard: React.FC = () => {
   // Carrega a foto de reconhecimento já cadastrada do próprio professor
   const carregarReconhecimento = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/professor/reconhecimento", {
+      const res = await fetch(`${API}/api/professor/reconhecimento`, {
         headers: authHeaders(),
       });
       if (!tratarResposta(res)) return;
@@ -166,7 +167,7 @@ export const ProfessorDashboard: React.FC = () => {
     if (!foto || !materia || salvandoFoto) return;
     setSalvandoFoto(true);
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/professor/reconhecimento", {
+      const res = await fetch(`${API}/api/professor/reconhecimento`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ foto, materia }),
@@ -271,7 +272,7 @@ export const ProfessorDashboard: React.FC = () => {
 
     setStatusNota((prev) => ({ ...prev, [chave]: { estado: "salvando" } }));
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/professor/notas", {
+      const res = await fetch(`${API}/api/professor/notas`, {
         method: "PUT",
         headers: authHeaders(),
         body: JSON.stringify({ aluno_id: alunoId, bimestre: bim, materia: mat, nota: valor }),
@@ -344,7 +345,7 @@ export const ProfessorDashboard: React.FC = () => {
     setSalvandoAcomp(true);
     try {
       const res = await fetch(
-        "http://127.0.0.1:8787/api/professor/acompanhamentos",
+        `${API}/api/professor/acompanhamentos`,
         {
           method: "POST",
           headers: authHeaders(),

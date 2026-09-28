@@ -1,6 +1,6 @@
-# E2E — Notas, Acompanhamento, Painel do Pai, Diretoria/Coordenador
+﻿# E2E — Notas, Acompanhamento, Painel do Pai, Diretoria/Coordenador
 $ErrorActionPreference = "Continue"
-$base = "http://127.0.0.1:8787"
+$base = if ($env:API_URL) { $env:API_URL } else { "http://127.0.0.1:8787" }
 $tmp = "C:\Users\Rene Silva\AppData\Local\Temp\opencode"
 $bodyFile = Join-Path $tmp "e2e-body.json"
 $payloadFile = Join-Path $tmp "e2e-payload.json"
@@ -19,7 +19,7 @@ function Invoke-JsonSend($metodo, $rota, $obj, $token) {
   if ($token) { $args += @("-H", ("Authorization: Bearer " + $token)) }
   $code = curl.exe @args ($base + $rota)
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -30,7 +30,7 @@ function Invoke-GetAuth($rota, $token) {
     $code = curl.exe -s -o $bodyFile -w "%{http_code}" ($base + $rota)
   }
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -49,22 +49,24 @@ function Check($nome, $condicao, $detalhe) {
 }
 
 # ===== 1. Login admin =====
-$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = "admin123" } $null
+# Credenciais de teste: so em .dev.vars (gitignored) — nada versionado.
+. (Join-Path $PSScriptRoot "..\credenciais.ps1")
+$loginAdmin = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "admin@informaluno.com"; senha = $senhaAdmin } $null
 $tokenAdmin = $null
 if ($loginAdmin.code -eq 200) { $tokenAdmin = ($loginAdmin.body | ConvertFrom-Json).token }
 Check "Login admin" ($tokenAdmin -ne $null) ("[HTTP " + $loginAdmin.code + "]")
 if (-not $tokenAdmin) { Write-Output "SEM TOKEN ADMIN - abortando"; exit 1 }
 
 # ===== 2. Criar usuarios de teste (pai, professor, coordenador) =====
-$rPai = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Pai Teste Notas"; email = "e2e.pai.notas@x.com"; senha = "SenhaForte123" } $null
+$rPai = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Pai Teste Notas"; email = "e2e.pai.notas@x.com"; senha = "SenhaForte#12" } $null
 Check "Registro pai (RESPONSAVEL)" ($rPai.code -eq 201) ("[HTTP " + $rPai.code + "]")
 $paiId = ($rPai.body | ConvertFrom-Json).usuario.id
 
-$rProf = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Prof Teste Notas"; email = "e2e.prof.notas@x.com"; senha = "SenhaForte123" } $null
+$rProf = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Prof Teste Notas"; email = "e2e.prof.notas@x.com"; senha = "SenhaForte#12" } $null
 Check "Registro professor (auto-cadastro)" ($rProf.code -eq 201) ("[HTTP " + $rProf.code + "]")
 $profId = ($rProf.body | ConvertFrom-Json).usuario.id
 
-$rCoord = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Coord Teste Notas"; email = "e2e.coord.notas@x.com"; senha = "SenhaForte123" } $null
+$rCoord = Invoke-JsonSend "POST" "/api/auth/registro" @{ nome = "Coord Teste Notas"; email = "e2e.coord.notas@x.com"; senha = "SenhaForte#12" } $null
 Check "Registro coordenador (auto-cadastro)" ($rCoord.code -eq 201) ("[HTTP " + $rCoord.code + "]")
 $coordId = ($rCoord.body | ConvertFrom-Json).usuario.id
 
@@ -76,17 +78,17 @@ $p2 = Invoke-JsonSend "PATCH" ("/api/admin/usuarios/" + $coordId + "/role") @{ n
 Check "Admin promove para COORDENADOR" ($p2.code -eq 200) ("[HTTP " + $p2.code + "]")
 
 # ===== 4. Logins dos tres perfis =====
-$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.pai.notas@x.com"; senha = "SenhaForte123" } $null
+$loginPai = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.pai.notas@x.com"; senha = "SenhaForte#12" } $null
 $tokenPai = $null
 if ($loginPai.code -eq 200) { $tokenPai = ($loginPai.body | ConvertFrom-Json).token }
 Check "Login pai" ($tokenPai -ne $null) ("[HTTP " + $loginPai.code + "]")
 
-$loginProf = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.prof.notas@x.com"; senha = "SenhaForte123" } $null
+$loginProf = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.prof.notas@x.com"; senha = "SenhaForte#12" } $null
 $tokenProf = $null
 if ($loginProf.code -eq 200) { $tokenProf = ($loginProf.body | ConvertFrom-Json).token }
 Check "Login professor" ($tokenProf -ne $null) ("[HTTP " + $loginProf.code + "]")
 
-$loginCoord = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.coord.notas@x.com"; senha = "SenhaForte123" } $null
+$loginCoord = Invoke-JsonSend "POST" "/api/auth/login" @{ email = "e2e.coord.notas@x.com"; senha = "SenhaForte#12" } $null
 $tokenCoord = $null
 if ($loginCoord.code -eq 200) { $tokenCoord = ($loginCoord.body | ConvertFrom-Json).token }
 Check "Login coordenador" ($tokenCoord -ne $null) ("[HTTP " + $loginCoord.code + "]")
@@ -119,6 +121,34 @@ if ($profAlunos.code -eq 200) {
 Check "Professor lista alunos" (($profAlunos.code -eq 200) -and ($alunoTeste -ne $null)) ("[HTTP " + $profAlunos.code + "]")
 $alunoId = $null
 if ($alunoTeste) { $alunoId = $alunoTeste.id }
+
+# ===== 6b. Fixture do "aluno alheio" (prova do bloqueio 403) =====
+# O pai precisa de um aluno que NAO e filho dele para o teste de permissao.
+# A matricula 101010 nao e criada em nenhum outro lugar do repositorio — se
+# nao existir, este bloco cria (pelo ADMIN e sem vinculo com qualquer conta)
+# e a limpeza do final remove. Se ja existir, o script apenas reusa.
+if (-not $anthonyId) {
+  $criarAlheio = Invoke-JsonSend "POST" "/api/cadastro" @{
+    nome             = "Anthony Teste Alheio"
+    matricula        = "101010"
+    cpfAluno         = "19444627322"
+    responsavelNome  = "Pai Do Anthony"
+    cpf              = "86981657295"
+    responsavel2Nome = "Mae Do Anthony"
+    cpf2             = "75956966408"
+    status           = "PENDENTE_VALIDACAO"
+  } $tokenAdmin
+  Check "Fixture 101010 disponivel (criada agora)" (($criarAlheio.code -eq 201) -or ($criarAlheio.code -eq 409)) ("[HTTP " + $criarAlheio.code + "] " + $criarAlheio.body)
+  $admDepois = Invoke-GetAuth "/api/admin/alunos" $tokenAdmin
+  if ($admDepois.code -eq 200) {
+    $arrD = $admDepois.body | ConvertFrom-Json
+    if ($arrD -isnot [array]) {
+      if ($arrD.alunos) { $arrD = $arrD.alunos } else { $arrD = @($arrD) }
+    }
+    foreach ($a in $arrD) { if ($a -and ($a.matricula -eq "101010")) { $anthonyId = $a.id } }
+  }
+}
+Check "Aluno alheio disponivel (101010)" ($anthonyId -ne $null) ("id=" + $anthonyId)
 
 # Sem token -> 401
 $profSemTok = Invoke-GetAuth "/api/professor/alunos" $null
@@ -227,6 +257,12 @@ foreach ($uid in @($paiId, $profId, $coordId)) {
     $del = Invoke-DeleteAuth ("/api/admin/usuarios/" + $uid) $tokenAdmin
     Check ("Limpeza: usuario " + $uid + " removido") (($del -eq 200) -or ($del -eq 204)) ("[HTTP " + $del + "]")
   }
+}
+
+# Fixture 101010: sai junto (e um fixture sintetico, sem dados reais)
+if ($anthonyId) {
+  $delAlheio = Invoke-DeleteAuth ("/api/admin/alunos/" + $anthonyId) $tokenAdmin
+  Check "Limpeza: aluno alheio 101010 removido" (($delAlheio -eq 200) -or ($delAlheio -eq 204)) ("[HTTP " + $delAlheio + "]")
 }
 
 # A sessao do pai removido nao vale mais

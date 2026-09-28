@@ -17,7 +17,10 @@ import {
 } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import { abrirEmNovaAba } from "../atestado/abrirarquivo";
+import { RegrasSenha } from "../../components/regrassenha";
+import { regrasPendentes, regrasEmUmaLinha } from "../../components/senhas";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface Usuario {
   id: number;
@@ -99,6 +102,9 @@ export const AdminDashboard: React.FC = () => {
   const [novaSenha, setNovaSenha] = useState("");
   const [novoRole, setNovoRole] = useState("");
 
+  // Destino do e-mail de teste — em branco, a API usa o e-mail do admin logado
+  const [emailDestino, setEmailDestino] = useState("");
+
   // Pré-cadastros de alunos (tela de cadastro: aluno + pai + mãe)
   const [alunos, setAlunos] = useState<AlunoCadastrado[]>([]);
   const [alunoSelecionado, setAlunoSelecionado] = useState<AlunoCadastrado | null>(null);
@@ -121,13 +127,16 @@ export const AdminDashboard: React.FC = () => {
     Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
   });
 
-  // Envia um e-mail de teste (valida o SMTP configurado no backend)
+  // Envia um e-mail de teste (valida o SMTP configurado no backend).
+  // Com destino digitado, encaminha para esse e-mail; em branco, a API usa
+  // o e-mail do próprio administrador logado.
   const testarEmail = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/admin/testar-email", {
+      const destino = emailDestino.trim();
+      const res = await fetch(`${API}/api/admin/testar-email`, {
         method: "POST",
         headers: authHeaders(),
-        body: JSON.stringify({}),
+        body: JSON.stringify(destino ? { para: destino } : {}),
       });
       if (res.status === 401 || res.status === 403) {
         finalizarSessao();
@@ -159,7 +168,7 @@ export const AdminDashboard: React.FC = () => {
   const carregarUsuarios = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/admin/usuarios", {
+      const res = await fetch(`${API}/api/admin/usuarios`, {
         headers: authHeaders(),
       });
       if (res.ok) {
@@ -182,7 +191,7 @@ export const AdminDashboard: React.FC = () => {
   // Buscar os pré-cadastros de alunos com responsáveis
   const carregarAlunos = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/admin/alunos", {
+      const res = await fetch(`${API}/api/admin/alunos`, {
         headers: authHeaders(),
       });
       if (res.ok) {
@@ -198,7 +207,7 @@ export const AdminDashboard: React.FC = () => {
   const carregarLog = async () => {
     setCarregandoLog(true);
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/admin/log", {
+      const res = await fetch(`${API}/api/admin/log`, {
         headers: authHeaders(),
       });
       if (res.ok) {
@@ -226,8 +235,18 @@ export const AdminDashboard: React.FC = () => {
   const handleRedefinirSenha = async () => {
     if (!usuarioSelecionado || !novaSenha) return;
 
+    // Padrão de senha exigido pela API (recusa com 400) — avisamos antes
+    const pendentes = regrasPendentes(novaSenha);
+    if (pendentes.length > 0) {
+      setMensagem({
+        tipo: "danger",
+        texto: `Senha fora do padrão de segurança. ${regrasEmUmaLinha(pendentes)}`,
+      });
+      return;
+    }
+
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/admin/usuarios/${usuarioSelecionado.id}/senha`, {
+      const res = await fetch(`${API}/api/admin/usuarios/${usuarioSelecionado.id}/senha`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ novaSenha }),
@@ -239,6 +258,8 @@ export const AdminDashboard: React.FC = () => {
         setMensagem({ tipo: "success", texto: `Senha de ${usuarioSelecionado.nome} redefinida com sucesso!` });
         setShowModalSenha(false);
         setNovaSenha("");
+      } else if (Array.isArray(data.erros) && data.erros.length > 0) {
+        setMensagem({ tipo: "danger", texto: `${data.error} ${regrasEmUmaLinha(data.erros)}` });
       } else {
         setMensagem({ tipo: "danger", texto: data.error || "Erro ao redefinir senha." });
       }
@@ -252,7 +273,7 @@ export const AdminDashboard: React.FC = () => {
     if (!usuarioSelecionado || !novoRole) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/admin/usuarios/${usuarioSelecionado.id}/role`, {
+      const res = await fetch(`${API}/api/admin/usuarios/${usuarioSelecionado.id}/role`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ novoRole }),
@@ -277,7 +298,7 @@ export const AdminDashboard: React.FC = () => {
     if (!usuarioSelecionado) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/admin/usuarios/${usuarioSelecionado.id}`, {
+      const res = await fetch(`${API}/api/admin/usuarios/${usuarioSelecionado.id}`, {
         method: "DELETE",
         headers: authHeaders(),
       });
@@ -301,7 +322,7 @@ export const AdminDashboard: React.FC = () => {
     if (!alunoSelecionado) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/admin/alunos/${alunoSelecionado.id}`, {
+      const res = await fetch(`${API}/api/admin/alunos/${alunoSelecionado.id}`, {
         method: "DELETE",
         headers: authHeaders(),
       });
@@ -360,7 +381,7 @@ export const AdminDashboard: React.FC = () => {
   const salvarFoto = async (chave: AlvoFoto, foto: string) => {
     if (!alunoSelecionado) return;
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/admin/alunos/${alunoSelecionado.id}/foto`, {
+      const res = await fetch(`${API}/api/admin/alunos/${alunoSelecionado.id}/foto`, {
         method: "PATCH",
         headers: authHeaders(),
         body: JSON.stringify({ alvo: chave, foto }),
@@ -443,7 +464,7 @@ export const AdminDashboard: React.FC = () => {
     setSalvandoVinculo(true);
     try {
       const res = await fetch(
-        `http://127.0.0.1:8787/api/admin/usuarios/${usuarioVinculo.id}/aluno`,
+        `${API}/api/admin/usuarios/${usuarioVinculo.id}/aluno`,
         {
           method: "PATCH",
           headers: authHeaders(),
@@ -524,9 +545,26 @@ export const AdminDashboard: React.FC = () => {
           >
             ← Voltar
           </Button>
-          <Button variant="outline-light" size="sm" onClick={testarEmail}>
-            ✉️ Testar E-mail
-          </Button>
+          <InputGroup size="sm" className="flex-shrink-1">
+            <Form.Control
+              type="email"
+              placeholder="Encaminhar para outro e-mail…"
+              aria-label="E-mail de destino do e-mail de teste"
+              title="Em branco, envia para o e-mail do admin logado"
+              value={emailDestino}
+              onChange={(e) => setEmailDestino(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  testarEmail();
+                }
+              }}
+              style={{ width: "230px" }}
+            />
+            <Button variant="outline-light" size="sm" onClick={testarEmail}>
+              ✉️ Testar E-mail
+            </Button>
+          </InputGroup>
           <Button variant="outline-light" size="sm" onClick={handleLogout}>
             🚪 Sair do Sistema
           </Button>
@@ -932,12 +970,14 @@ export const AdminDashboard: React.FC = () => {
                 <Form.Label className="form-label-custom">Nova Senha</Form.Label>
                 <Form.Control
                   type="password"
-                  placeholder="Digite a nova senha (mínimo 4 dígitos)"
+                  placeholder="Digite a nova senha"
                   value={novaSenha}
                   onChange={(e) => setNovaSenha(e.target.value)}
                   className="form-control-custom"
                 />
               </Form.Group>
+              {/* Normas da senha, com ✓/○ acompanhando o que está sendo digitado */}
+              <RegrasSenha senha={novaSenha} />
             </>
           )}
         </Modal.Body>

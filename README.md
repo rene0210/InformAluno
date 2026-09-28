@@ -33,8 +33,10 @@ Banco novo (apaga e recria o schema completo, **com dev parado**):
 npm run db:setup --prefix inform-aluno-api
 ```
 
-**Admin inicial:** `admin@informaluno.com` / `admin123` (hash pré-computado no
-schema; troque a senha após o primeiro acesso).
+**Admin inicial:** `admin@informaluno.com`. A senha **não vem no repositório**:
+num clone novo, rode a API *sem* `.dev.vars` e use "Esqueci a senha" na tela de
+login para definir a sua (sem credencial de e-mail a API devolve o link na
+própria tela); guarde-a em `ADMIN_SENHA` no `.dev.vars` para os testes.
 
 ## Scripts npm (raiz)
 

@@ -2,8 +2,10 @@
 // Uso: node smoke-checkinout.js   (backend em 127.0.0.1:8787 no ar)
 // Resíduo: registros "Aluno Smoke Checkin" + linha de foto do professor
 // são removidos pela auditoria D1 final.
-const BASE = "http://127.0.0.1:8787";
-const SENHA = "informaluno123";
+import { credencial } from "../credenciais.mjs";
+
+const BASE = process.env.API_URL || "http://127.0.0.1:8787";
+const SENHA = credencial("ELENCO_SENHA");
 const ALUNO_ID = 56; // aluno demo (mat 990208)
 // Id fora da família do pai de teste — serve para provar que o responsável
 // NÃO grava movimento de aluno que não é filho dele.
@@ -76,7 +78,7 @@ const main = async () => {
   // ---------- ADMIN: repoe senhas do elenco (auto-cura) ----------
   // A UI do /admin permite redefinir senha e muda o valor do cast;
   // restauramos antes de testar para o smoke nunca quebrar por isso.
-  const admin = await login("admin@informaluno.com", "admin123");
+  const admin = await login("admin@informaluno.com", credencial("ADMIN_SENHA"));
   check("Login ADMIN (guardiao das senhas)", !!admin);
   if (admin) {
     const usuarios = await req("GET", "/api/admin/usuarios", { token: admin.token });
@@ -279,6 +281,27 @@ const main = async () => {
     "GET /api/verificar/candidatos com perfil de PROFESSOR -> 403",
     r.status === 403,
     `HTTP ${r.status}`
+  );
+
+  // ---------- SEGURANCA: o responsavel so enxerga os proprios filhos ----------
+  // A lista devolve foto de menor; quem entra pela /escolha nao pode levar
+  // a foto das outras familias nem a de professores.
+  r = await req("GET", "/api/verificar/candidatos", { token: pai.token });
+  const candidatosDoPai = r.status === 200 && Array.isArray(r.data) ? r.data : [];
+  const matriculasDoPai = candidatosDoPai.map((c) => String(c.matricula));
+  check(
+    "RESPONSAVEL ve o proprio filho nos candidatos",
+    r.status === 200 && matriculasDoPai.includes("990208"),
+    `HTTP ${r.status} filhos=[${matriculasDoPai.join(", ")}]`
+  );
+  const temRostoAlheio =
+    !matriculasDoPai.includes("212121") &&
+    !matriculasDoPai.includes("12345") &&
+    !candidatosDoPai.some((c) => c.eh_professor === true);
+  check(
+    "RESPONSAVEL NAO ve rostos de outras familias nem de professor",
+    r.status === 200 && temRostoAlheio,
+    `HTTP ${r.status} lista=${matriculasDoPai.length} professor=${candidatosDoPai.some((c) => c.eh_professor === true)}`
   );
   r = await req("POST", "/api/verificar", { body: { foto: FOTO_1PX } });
   check("POST /api/verificar SEM token -> 401", r.status === 401, `HTTP ${r.status}`);

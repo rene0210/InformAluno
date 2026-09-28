@@ -3,8 +3,10 @@
 // diretoria/gestor), listas por perfil e bolinhas de não lidas.
 // Uso: node smoke-chat.js   (backend em 127.0.0.1:8787 no ar)
 // Resíduo: mensagens com prefixo "Smoke chat:" são removidas pela auditoria D1 final.
-const BASE = "http://127.0.0.1:8787";
-const SENHA = "informaluno123";
+import { credencial } from "../credenciais.mjs";
+
+const BASE = process.env.API_URL || "http://127.0.0.1:8787";
+const SENHA = credencial("ELENCO_SENHA");
 const ALUNO_DEMO = 56; // filho do aluno.pai (mat 990208)
 const ALUNO_NAO_FILHO = 1; // não é filho de aluno.pai
 
@@ -63,7 +65,7 @@ const linhaFio = (lista, fio) =>
 
 const main = async () => {
   // ---------- ADMIN: repoe senhas do elenco (auto-cura) ----------
-  const admin = await login("admin@informaluno.com", "admin123");
+  const admin = await login("admin@informaluno.com", credencial("ADMIN_SENHA"));
   check("Login ADMIN (guardiao das senhas)", !!admin);
   if (admin) {
     const usuarios = await req("GET", "/api/admin/usuarios", { token: admin.token });

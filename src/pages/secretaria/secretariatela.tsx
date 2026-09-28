@@ -19,6 +19,7 @@ import { AtestadoBotao } from "../atestado/atestado";
 import { abrirEmNovaAba } from "../atestado/abrirarquivo";
 import { ChatPainel } from "../chat/chat";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface AlunoFotos {
   id: number;
@@ -101,7 +102,7 @@ export const SecretariaTela: React.FC = () => {
 
   const carregar = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/secretaria/alunos", {
+      const res = await fetch(`${API}/api/secretaria/alunos`, {
         headers: authHeaders(),
       });
       if (!tratarResposta(res)) return;
@@ -117,7 +118,7 @@ export const SecretariaTela: React.FC = () => {
 
     // Atestados anexados pelos responsáveis (seção complementar)
     try {
-      const respAt = await fetch("http://127.0.0.1:8787/api/secretaria/atestados", {
+      const respAt = await fetch(`${API}/api/secretaria/atestados`, {
         headers: authHeaders(),
       });
       if (respAt.ok) {
@@ -160,7 +161,7 @@ export const SecretariaTela: React.FC = () => {
     if (!alunoSelecionado) return;
     try {
       const res = await fetch(
-        `http://127.0.0.1:8787/api/secretaria/alunos/${alunoSelecionado.id}/foto`,
+        `${API}/api/secretaria/alunos/${alunoSelecionado.id}/foto`,
         {
           method: "PATCH",
           headers: authHeaders(),

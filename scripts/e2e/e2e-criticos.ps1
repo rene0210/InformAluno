@@ -1,6 +1,6 @@
-# E2E dos 3 criticos de seguranca - InformAluno
+﻿# E2E dos 3 criticos de seguranca - InformAluno
 $ErrorActionPreference = "Continue"
-$base = "http://127.0.0.1:8787"
+$base = if ($env:API_URL) { $env:API_URL } else { "http://127.0.0.1:8787" }
 $tmp = "C:\Users\Rene Silva\AppData\Local\Temp\opencode"
 $bodyFile = Join-Path $tmp "e2e-body.json"
 $payloadFile = Join-Path $tmp "e2e-payload.json"
@@ -16,7 +16,7 @@ function Invoke-JsonPost($rota, $obj) {
   [System.IO.File]::WriteAllText($payloadFile, $json)
   $code = curl.exe -s -o $bodyFile -w "%{http_code}" -X POST ($base + $rota) -H "Content-Type: application/json" -d "@$payloadFile"
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -27,7 +27,7 @@ function Invoke-GetAuth($rota, $token) {
     $code = curl.exe -s -o $bodyFile -w "%{http_code}" ($base + $rota)
   }
   $body = ""
-  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw }
+  if (Test-Path $bodyFile) { $body = Get-Content $bodyFile -Raw -Encoding UTF8 }
   return @{ code = (Read-Code $code); body = $body }
 }
 
@@ -46,13 +46,13 @@ function Check($nome, $obtido, $esperado) {
 }
 
 # ===== CRIT-1: whitelist de cargos no auto-cadastro =====
-$r = Invoke-JsonPost "/api/auth/registro" @{ nome = "E2E Admin"; email = "e2e.admin.teste@x.com"; senha = "SenhaForte123"; role = "ADMIN" }
+$r = Invoke-JsonPost "/api/auth/registro" @{ nome = "E2E Admin"; email = "e2e.admin.teste@x.com"; senha = "SenhaForte#12"; role = "ADMIN" }
 Check "CRIT-1 registro role=ADMIN bloqueado" $r.code 400
 
-$r = Invoke-JsonPost "/api/auth/registro" @{ nome = "E2E Diretor"; email = "e2e.diretor.teste@x.com"; senha = "SenhaForte123"; role = "DIRETOR" }
+$r = Invoke-JsonPost "/api/auth/registro" @{ nome = "E2E Diretor"; email = "e2e.diretor.teste@x.com"; senha = "SenhaForte#12"; role = "DIRETOR" }
 Check "CRIT-1 registro role=DIRETOR bloqueado" $r.code 400
 
-$rPort = Invoke-JsonPost "/api/auth/registro" @{ nome = "E2E Portaria"; email = "e2e.portaria.teste@x.com"; senha = "SenhaForte123"; role = "PORTARIA" }
+$rPort = Invoke-JsonPost "/api/auth/registro" @{ nome = "E2E Portaria"; email = "e2e.portaria.teste@x.com"; senha = "SenhaForte#12"; role = "PORTARIA" }
 Check "CRIT-1 registro role=PORTARIA permitido" $rPort.code 201
 $portId = $null
 if ($rPort.code -eq 201) {
@@ -61,7 +61,9 @@ if ($rPort.code -eq 201) {
 }
 
 # ===== CRIT-2: sessoes com token =====
-$login = Invoke-JsonPost "/api/auth/login" @{ email = "admin@informaluno.com"; senha = "admin123" }
+# Credenciais de teste: so em .dev.vars (gitignored) — nada versionado.
+. (Join-Path $PSScriptRoot "..\credenciais.ps1")
+$login = Invoke-JsonPost "/api/auth/login" @{ email = "admin@informaluno.com"; senha = $senhaAdmin }
 Check "Login admin" $login.code 200
 $tokenAdmin = $null
 if ($login.code -eq 200) { $tokenAdmin = ($login.body | ConvertFrom-Json).token }
@@ -77,7 +79,7 @@ if ($tokenAdmin) {
   $script:failures++
 }
 
-$loginP = Invoke-JsonPost "/api/auth/login" @{ email = "e2e.portaria.teste@x.com"; senha = "SenhaForte123" }
+$loginP = Invoke-JsonPost "/api/auth/login" @{ email = "e2e.portaria.teste@x.com"; senha = "SenhaForte#12" }
 Check "Login usuario PORTARIA de teste" $loginP.code 200
 $tokenPort = $null
 if ($loginP.code -eq 200) { $tokenPort = ($loginP.body | ConvertFrom-Json).token }
@@ -100,7 +102,7 @@ if ($tokenAdmin -and $portId) {
     $script:failures++
   }
 
-  $loginAfter = Invoke-JsonPost "/api/auth/login" @{ email = "e2e.portaria.teste@x.com"; senha = "SenhaForte123" }
+  $loginAfter = Invoke-JsonPost "/api/auth/login" @{ email = "e2e.portaria.teste@x.com"; senha = "SenhaForte#12" }
   if ($loginAfter.code -ne 200) {
     Write-Output ("PASS  usuario de teste realmente removido (login HTTP " + $loginAfter.code + ")")
   } else {

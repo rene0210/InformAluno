@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Container, Card, Form, Button, Navbar, Alert } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 export const EsqueciSenha: React.FC = () => {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export const EsqueciSenha: React.FC = () => {
     setCarregando(true);
 
     try {
-      const resposta = await fetch("http://127.0.0.1:8787/api/recuperar-senha", {
+      const resposta = await fetch(`${API}/api/recuperar-senha`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

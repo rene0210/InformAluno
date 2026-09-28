@@ -2,7 +2,10 @@ import React, { useState } from "react";
 import { Container, Card, Form, Button, Navbar, Alert } from "react-bootstrap";
 import { useNavigate } from "react-router-dom";
 import { TermosModal, PrivacidadeModal } from "../../components/legaltermos";
+import { RegrasSenha } from "../../components/regrassenha";
+import { regrasPendentes, regrasEmUmaLinha } from "../../components/senhas";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 export const RegistroUsuario: React.FC = () => {
   const navigate = useNavigate();
@@ -30,6 +33,14 @@ export const RegistroUsuario: React.FC = () => {
       return;
     }
 
+    // Conta nova só nasce com senha forte (a API recusa com 400, mas
+    // avisamos aqui antes de mandar)
+    const pendentes = regrasPendentes(senha);
+    if (pendentes.length > 0) {
+      setErro(`Senha fora do padrão de segurança. ${regrasEmUmaLinha(pendentes)}`);
+      return;
+    }
+
     if (!aceiteTermos) {
       setErro(
         "Para criar a conta, é necessário aceitar os Termos de Uso e a Política de Privacidade (LGPD).",
@@ -40,7 +51,7 @@ export const RegistroUsuario: React.FC = () => {
     setCarregando(true);
 
     try {
-      const resposta = await fetch("http://127.0.0.1:8787/api/auth/registro", {
+      const resposta = await fetch(`${API}/api/auth/registro`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ nome, email, senha, role }),
@@ -67,6 +78,8 @@ export const RegistroUsuario: React.FC = () => {
             navigate("/cadastro"); // Tela com Câmera e Captura Facial
           }
         }, 1200);
+      } else if (Array.isArray(dados.erros) && dados.erros.length > 0) {
+        setErro(`${dados.error} ${regrasEmUmaLinha(dados.erros)}`);
       } else {
         setErro(dados.error || "Erro ao registrar conta.");
       }
@@ -187,6 +200,9 @@ export const RegistroUsuario: React.FC = () => {
                   required
                 />
               </Form.Group>
+
+              {/* Orientação: ✓/○ acompanham o que está sendo digitado */}
+              <RegrasSenha senha={senha} />
 
               <Form.Check
                 type="checkbox"

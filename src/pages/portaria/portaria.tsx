@@ -11,6 +11,7 @@ import {
 import Webcam from "react-webcam";
 // face-api vem do script clássico /face-api.js (index.html) — ver declaração em src/types/faceapi.d.ts
 import "./portaria.css";
+import { API } from "../../components/api";
 
 interface DadosCheckIn {
   /** Quem o rosto reconheceu: o responsável presente, o próprio aluno ou um professor */
@@ -225,7 +226,7 @@ const PortariaTela: React.FC = () => {
   const registrarNaVan = async (aluno: Candidato) => {
     try {
       const token = localStorage.getItem("token") || "";
-      const resposta = await fetch("http://127.0.0.1:8787/api/van/registrar", {
+      const resposta = await fetch(`${API}/api/van/registrar`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -265,7 +266,7 @@ const PortariaTela: React.FC = () => {
     try {
       const token = localStorage.getItem("token") || "";
       const resposta = await fetch(
-        "http://127.0.0.1:8787/api/portaria/registrar-entrada",
+        `${API}/api/portaria/registrar-entrada`,
         {
           method: "POST",
           headers: {
@@ -341,7 +342,7 @@ const PortariaTela: React.FC = () => {
         // 2. Busca as fotos dos pré-cadastros. A rota exige sessão: a lista
         //    devolve foto de menor, então nada de consulta anônima.
         const token = localStorage.getItem("token") || "";
-        const resposta = await fetch("http://127.0.0.1:8787/api/verificar/candidatos", {
+        const resposta = await fetch(`${API}/api/verificar/candidatos`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!resposta.ok) {

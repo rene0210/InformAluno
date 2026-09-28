@@ -8,8 +8,10 @@
    Dados de teste descartaveis: matricula 990207 / CPFs 991000027xx.
    Elenco de apresentacao (gestor@, aluno@, aluno.pai@) fica permanente. */
 
-const API = "http://127.0.0.1:8787";
-const SENHA = "informaluno123";
+import { credencial } from "../credenciais.mjs";
+
+const API = process.env.API_URL || "http://127.0.0.1:8787";
+const SENHA = credencial("ELENCO_SENHA");
 let pass = 0;
 let fail = 0;
 
@@ -60,7 +62,7 @@ const registrar = async (nome, email) => {
 
 const main = async () => {
   // ---------- ADMIN ----------
-  const admin = await login("admin@informaluno.com", "admin123");
+  const admin = await login("admin@informaluno.com", credencial("ADMIN_SENHA"));
   check("Login do admin master", !!admin);
   if (!admin) {
     console.log("SEM ADMIN - abortando");
@@ -80,7 +82,11 @@ const main = async () => {
     console.log("[reset] aluno de teste anterior removido");
   }
   usuarios = await req("GET", "/api/admin/usuarios", { token: tokenAdmin });
-  for (const em of ["smoke.pai@informaluno.com", "smoke.intruso@informaluno.com"]) {
+  for (const em of [
+    "smoke.pai@informaluno.com",
+    "smoke.intruso@informaluno.com",
+    "smoke.senha.forte@informaluno.com",
+  ]) {
     const u = acharUsuario(em);
     if (u) {
       await req("DELETE", `/api/admin/usuarios/${u.id}`, { token: tokenAdmin });
@@ -694,6 +700,99 @@ const main = async () => {
     check("PUT remover o 1º responsavel (2º presente) -> 200 alterado=true", false, "sem aluno");
   }
 
+  // ---------- FEATURE F: PADRAO DE SENHA ----------
+  // 8+ caracteres, maiuscula, minuscula, caractere especial e sem sequencia.
+  // Vale nos 3 pontos que criam ou trocam senha; o LOGIN nao cobra nada
+  // (contas antigas continuam entrando), ele so mostra o alerta de normas.
+  console.log("\n--- FEATURE F: padrao de senha ---");
+
+  const senhaFraca = await req("POST", "/api/auth/registro", {
+    body: {
+      nome: "Senha Fraca",
+      email: "smoke.senha.fraca@informaluno.com",
+      senha: "senha123",
+    },
+  });
+  check(
+    "Registro com senha fraca -> 400 com as normas",
+    senhaFraca.status === 400 &&
+      Array.isArray(senhaFraca.data.erros) &&
+      senhaFraca.data.erros.length > 0,
+    `HTTP ${senhaFraca.status} erros=${JSON.stringify(senhaFraca.data.erros || [])}`
+  );
+
+  const semEspecial = await req("POST", "/api/auth/registro", {
+    body: {
+      nome: "Sem Especial",
+      email: "smoke.senha.especial@informaluno.com",
+      senha: "SenhaForte123",
+    },
+  });
+  check(
+    "Registro sem caractere especial -> 400",
+    semEspecial.status === 400 &&
+      (semEspecial.data.erros || []).some((e) => e.includes("especial")),
+    `HTTP ${semEspecial.status} erros=${JSON.stringify(semEspecial.data.erros || [])}`
+  );
+
+  const sequencial = await req("POST", "/api/auth/registro", {
+    body: {
+      nome: "Sequencial",
+      email: "smoke.senha.sequencial@informaluno.com",
+      senha: "Abcdefg#1",
+    },
+  });
+  check(
+    "Registro com senha sequencial (abc) -> 400",
+    sequencial.status === 400 &&
+      (sequencial.data.erros || []).some((e) => e.includes("sequ")),
+    `HTTP ${sequencial.status} erros=${JSON.stringify(sequencial.data.erros || [])}`
+  );
+
+  const statusForte = await registrar(
+    "Senha No Padrao",
+    "smoke.senha.forte@informaluno.com"
+  );
+  check("Registro com senha no padrao -> 201", statusForte === 201, `HTTP ${statusForte}`);
+
+  const trocaFraca = await req("PATCH", `/api/admin/usuarios/${paiDemoUser.id}/senha`, {
+    token: tokenAdmin,
+    body: { novaSenha: "Senha123" },
+  });
+  check(
+    "Admin redefinir senha fraca -> 400 (nao grava)",
+    trocaFraca.status === 400 && (trocaFraca.data.erros || []).length > 0,
+    `HTTP ${trocaFraca.status} erros=${JSON.stringify(trocaFraca.data.erros || [])}`
+  );
+
+  const corpoRecuperacao = {
+    nome: "Qualquer Nome",
+    cpf: "00000000000",
+    perguntas: [
+      { id: 1, resposta: "a" },
+      { id: 2, resposta: "b" },
+      { id: 3, resposta: "c" },
+    ],
+  };
+  const recFraca = await req("POST", "/api/recuperar-senha/token-que-nao-existe", {
+    body: { ...corpoRecuperacao, novaSenha: "senha" },
+  });
+  check(
+    "'Esqueci a senha' com senha fraca -> 400 (recusa antes do token)",
+    recFraca.status === 400 && (recFraca.data.erros || []).length > 0,
+    `HTTP ${recFraca.status} erros=${JSON.stringify(recFraca.data.erros || [])}`
+  );
+  const recForte = await req("POST", "/api/recuperar-senha/token-que-nao-existe", {
+    body: { ...corpoRecuperacao, novaSenha: SENHA },
+  });
+  const recusouPorPadrao =
+    recForte.status === 400 && /padr/i.test(recForte.data ? recForte.data.error : "");
+  check(
+    "Senha forte passa pela regra do 'esqueci a senha'",
+    !recusouPorPadrao,
+    `HTTP ${recForte.status} error=${recForte.data ? recForte.data.error : "?"}`
+  );
+
   // ---------- LIMPEZA: dados de teste descartaveis ----------
   console.log("\n--- LIMPEZA ---");
   for (const mat of ["990215", "990216", "990218"]) {
@@ -713,7 +812,11 @@ const main = async () => {
   );
 
   usuarios = await req("GET", "/api/admin/usuarios", { token: tokenAdmin });
-  for (const em of ["smoke.pai@informaluno.com", "smoke.intruso@informaluno.com"]) {
+  for (const em of [
+    "smoke.pai@informaluno.com",
+    "smoke.intruso@informaluno.com",
+    "smoke.senha.forte@informaluno.com",
+  ]) {
     const u = acharUsuario(em);
     if (u) {
       const dr = await req("DELETE", `/api/admin/usuarios/${u.id}`, { token: tokenAdmin });

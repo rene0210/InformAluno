@@ -7,7 +7,7 @@
 // localStorage é limpo mesmo assim.
 // ============================================================
 
-const API = "http://127.0.0.1:8787";
+import { API } from "./api";
 
 export function finalizarSessao(): void {
   const token = localStorage.getItem("token");

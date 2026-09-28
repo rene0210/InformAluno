@@ -4,17 +4,37 @@
 # Copie este arquivo para ".dev.vars" (mesma pasta) e preencha.
 # O .dev.vars é local e NUNCA vai para o repositório.
 #
-# Gmail (recomendado): ative a verificação em duas etapas e gere
-# uma "senha de app" em https://myaccount.google.com/security
-# -> Verificação em duas etapas -> Senhas de app.
-# Cole a senha de app em SMTP_PASS (sem espaços).
+# Prioridade: RESEND_API_KEY (Resend, API HTTP) > SMTP_* (Gmail).
+# Sem nenhuma das duas, tudo roda em MODO LOG (nada é enviado e
+# nenhum teste quebra).
 # ============================================================
 
+# --- Resend (recomendado) --------------------------------------------
+# Chave em https://resend.com/api-keys  (começa com re_)
+RESEND_API_KEY=
+# Remetente. Comece com onboarding@resend.dev (só envia para o e-mail
+# verificado da conta). Para enviar a terceiros, verifique um domínio no
+# Resend (Domains -> registros DNS de SPF/DKIM/DMARC) e use por exemplo:
+#   RESEND_FROM=InformAluno <notificacoes@seudominio.com>
+RESEND_FROM=InformAluno <onboarding@resend.dev>
+
+# --- SMTP (fallback: só é usado quando RESEND_API_KEY está vazio) -----
+# Gmail: ative a verificação em duas etapas e gere uma "senha de app" em
+# https://myaccount.google.com/security -> Verificação em duas etapas ->
+# Senhas de app. Cole a senha de app em SMTP_PASS (sem espaços).
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=465
 SMTP_USER=seu.email@gmail.com
 SMTP_PASS=sua-senha-de-app-sem-espacos
 EMAIL_FROM=InformAluno Secretaria <seu.email@gmail.com>
+# --- Credenciais dos testes (lidas por scripts/credenciais.mjs|.ps1) -----
+# Senha do admin (admin@informaluno.com) e das contas de demonstração.
+# NÃO versionadas: preencha aqui no seu .dev.vars local. Num clone novo,
+# defina a senha do admin pela tela "Esqueci a senha" (API sem e-mail
+# configurado devolve o link) e anote o valor em ADMIN_SENHA.
+ADMIN_SENHA=
+ELENCO_SENHA=
+
 APP_URL=http://localhost:5173
 
 # ------------------------------------------------------------

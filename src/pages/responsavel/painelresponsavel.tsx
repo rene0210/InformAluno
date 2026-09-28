@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { AtestadoBotao } from "../atestado/atestado";
 import { ChatPainel } from "../chat/chat";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface NotaResumo {
   /** Matéria da grade escolar ('' = nota antiga, lançada antes da grade) */
@@ -104,7 +105,7 @@ export const PainelResponsavel: React.FC = () => {
 
   const carregar = async (silencioso = false) => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/painel/alunos", {
+      const res = await fetch(`${API}/api/painel/alunos`, {
         headers: authHeaders(),
       });
       if (!tratarResposta(res)) return;
@@ -115,7 +116,7 @@ export const PainelResponsavel: React.FC = () => {
 
         // Pendências de aprovação (terceiro responsável) — falha não derruba a tela
         try {
-          const respConv = await fetch("http://127.0.0.1:8787/api/painel/convites", {
+          const respConv = await fetch(`${API}/api/painel/convites`, {
             headers: authHeaders(),
           });
           if (respConv.ok) {
@@ -156,7 +157,7 @@ export const PainelResponsavel: React.FC = () => {
     const anexo = anexos[alunoId];
     try {
       const res = await fetch(
-        "http://127.0.0.1:8787/api/painel/acompanhamentos",
+        `${API}/api/painel/acompanhamentos`,
         {
           method: "POST",
           headers: authHeaders(),
@@ -235,7 +236,7 @@ export const PainelResponsavel: React.FC = () => {
   const decidirConvite = async (token: string, decisao: "APROVAR" | "REJEITAR") => {
     setDecidindoToken(token);
     try {
-      const res = await fetch(`http://127.0.0.1:8787/api/convite/${token}/aprovar`, {
+      const res = await fetch(`${API}/api/convite/${token}/aprovar`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({ decisao }),

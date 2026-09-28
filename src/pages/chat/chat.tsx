@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button, Form, Badge } from "react-bootstrap";
 import "../cadastro/Cadastro.css";
+import { API } from "../../components/api";
 
 interface ChatMsg {
   id: number;
@@ -85,7 +86,7 @@ export const ChatPainel: React.FC = () => {
 
   const carregarConversas = async () => {
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/chat/conversas", {
+      const res = await fetch(`${API}/api/chat/conversas`, {
         headers: authHeaders(),
       });
       // Sessão expirada: a própria tela já trata o 401/403 dela
@@ -115,7 +116,7 @@ export const ChatPainel: React.FC = () => {
   ) => {
     try {
       const url =
-        `http://127.0.0.1:8787/api/chat/mensagens?conversa=${fio.conversa}` +
+        `${API}/api/chat/mensagens?conversa=${fio.conversa}` +
         `&professor_id=${fio.professor_id}&aluno_id=${fio.aluno_id}` +
         `&destino=${encodeURIComponent(fio.destino)}` +
         (desde > 0 ? `&desde=${desde}` : "");
@@ -191,7 +192,7 @@ export const ChatPainel: React.FC = () => {
     setEnviando(true);
     setErro(null);
     try {
-      const res = await fetch("http://127.0.0.1:8787/api/chat/mensagens", {
+      const res = await fetch(`${API}/api/chat/mensagens`, {
         method: "POST",
         headers: authHeaders(),
         body: JSON.stringify({

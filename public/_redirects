@@ -1,0 +1,10 @@
+# Cloud Pages/SPA: qualquer rota deixa o React Router desenhar a tela
+# (diretoria, portaria, /redefinir-senha/:token, etc.). Sem isto, recarregar
+# em /diretoria devolve 404.
+# As duas primeiras linhas garantem que assets já existentes continuem
+# sendo servidos como arquivo (valem mesmo se a regra catch-all for lida
+# antes do arquivo estático).
+/assets/*  /assets/:splat  200
+/models/*  /models/:splat  200
+/face-api.js  /face-api.js  200
+/*  /index.html  200

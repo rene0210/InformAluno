@@ -1,6 +1,7 @@
 /* Limpa contas de teste sobrando de rodadas anteriores (smoke.% / repro.%). */
+import { credencial } from "./credenciais.mjs";
 
-const API = "http://127.0.0.1:8787";
+const API = process.env.API_URL || "http://127.0.0.1:8787";
 
 const req = async (method, path, opts = {}) => {
   const { token, body } = opts;
@@ -22,7 +23,7 @@ const req = async (method, path, opts = {}) => {
 };
 
 const login = await req("POST", "/api/auth/login", {
-  body: { email: "admin@informaluno.com", senha: "admin123" },
+  body: { email: "admin@informaluno.com", senha: credencial("ADMIN_SENHA") },
 });
 if (login.status !== 200) {
   console.log("sem admin");
