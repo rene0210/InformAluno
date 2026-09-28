@@ -491,7 +491,7 @@ const main = async () => {
   };
 
   // Idempotencia: remove sobras de uma rodada anterior
-  for (const mat of ["990215", "990216", "990217"]) {
+  for (const mat of ["990215", "990216", "990217", "990218"]) {
     const antigo = await acharAluno(mat);
     if (antigo) {
       await req("DELETE", `/api/admin/alunos/${antigo.id}`, { token: tokenAdmin });
@@ -573,9 +573,112 @@ const main = async () => {
     check("Convite de 3º com aluno de 1 responsavel -> 201", false, "aluno/sessao ausente");
   }
 
+  // (5) REMOÇÃO DO 1º RESPONSÁVEL COM O 2º PRESENTE -> promoção do 2º
+  let r5 = await req("POST", "/api/cadastro", {
+    body: {
+      usuario_id: paiDemoUser.id,
+      nome: "Aluno Dois Responsaveis",
+      matricula: "990218",
+      serie: "7º Ano B",
+      cpfAluno: "99100002918",
+      responsavelNome: "Resp Primeiro Smoke",
+      cpf: "99100002904",
+      responsavel2Nome: "Resp Segundo Smoke",
+      cpf2: "99100002905",
+      fotoResponsavel: FOTO_FAKE,
+      fotoResponsavel2: FOTO_FAKE,
+      fotoAluno: FOTO_FAKE,
+    },
+  });
+  check("Cadastro com 2 responsaveis -> 201", r5.status === 201, `HTTP ${r5.status}`);
+
+  let filhosPromo = await req("GET", "/api/cadastro/filhos", {
+    token: sessaoPaiDemo ? sessaoPaiDemo.token : "",
+  });
+  const promo = (filhosPromo.data.filhos || []).find((f) => f.matricula === "990218");
+  check(
+    "Aluno de 2 responsaveis com os dois slots ocupados",
+    !!promo && !!promo.pai_id && !!promo.mae_id,
+    promo ? `pai_id=${promo.pai_id} mae_id=${promo.mae_id}` : "aluno nao encontrado"
+  );
+
+  if (promo) {
+    const idPaiAntigo = promo.pai_id;
+    const idMaeAntiga = promo.mae_id;
+
+    r = await putEdit(tokenAdmin, {
+      aluno_id: promo.id,
+      pai: { id: promo.pai_id, remover: true },
+    });
+    check(
+      "PUT remover o 1º responsavel (2º presente) -> 200 alterado=true",
+      r.status === 200 && r.data && r.data.alterado === true,
+      JSON.stringify(r.data)
+    );
+    check(
+      "Resposta cita a remocao do responsavel",
+      !!(r.data && r.data.alteracoes && /removido/i.test(r.data.alteracoes.join(" | "))),
+      r.data && r.data.alteracoes ? r.data.alteracoes.join(" | ") : "sem alteracoes"
+    );
+
+    filhosPromo = await req("GET", "/api/cadastro/filhos", {
+      token: sessaoPaiDemo ? sessaoPaiDemo.token : "",
+    });
+    const promoDepois = (filhosPromo.data.filhos || []).find(
+      (f) => f.matricula === "990218"
+    );
+    check(
+      "2º promovido ao slot principal apos remover o 1º",
+      !!promoDepois &&
+        promoDepois.pai_id === idMaeAntiga &&
+        !promoDepois.mae_id &&
+        promoDepois.pai === "Resp Segundo Smoke",
+      promoDepois
+        ? `pai_id=${promoDepois.pai_id} (esperado ${idMaeAntiga}) pai=${promoDepois.pai} mae_id=${promoDepois.mae_id}`
+        : "aluno sumiu"
+    );
+    check(
+      "Responsavel removido nao deixou rastro no cartao",
+      !!promoDepois && promoDepois.pai_id !== idPaiAntigo,
+      promoDepois ? `pai_id=${promoDepois.pai_id} antigo=${idPaiAntigo}` : "sem aluno"
+    );
+
+    // com um único responsável de novo, a remoção volta a ser recusada
+    r = await putEdit(tokenAdmin, {
+      aluno_id: promo.id,
+      pai: { id: idMaeAntiga, remover: true },
+    });
+    check(
+      "PUT remover o responsavel ja promovido (unico) -> 400",
+      r.status === 400 && /manter ao menos/i.test(r.data && r.data.error ? r.data.error : ""),
+      `HTTP ${r.status}`
+    );
+
+    // O modal continua aberto após a remoção e ainda rotula o bloco
+    // restante como "2º" (chave "mae") — a edição não pode sumir em silêncio
+    r = await putEdit(tokenAdmin, {
+      aluno_id: promo.id,
+      mae: { id: idMaeAntiga, nome: "Resp Segundo Editado Depois", telefone: "" },
+    });
+    check(
+      "Edicao vinda com a chave antiga (apos promocao) ainda e aplicada",
+      r.status === 200 && r.data && r.data.alterado === true,
+      `HTTP ${r.status} ${JSON.stringify(r.data)}`
+    );
+
+    const ultimo = await acharAluno("990218");
+    check(
+      "Edicao pos-promocao persistiu no banco",
+      !!ultimo && ultimo.pai_nome === "Resp Segundo Editado Depois",
+      ultimo ? `pai_nome=${ultimo.pai_nome}` : "aluno sumiu"
+    );
+  } else {
+    check("PUT remover o 1º responsavel (2º presente) -> 200 alterado=true", false, "sem aluno");
+  }
+
   // ---------- LIMPEZA: dados de teste descartaveis ----------
   console.log("\n--- LIMPEZA ---");
-  for (const mat of ["990215", "990216"]) {
+  for (const mat of ["990215", "990216", "990218"]) {
     const extra = await acharAluno(mat);
     if (extra) {
       const dl = await req("DELETE", `/api/admin/alunos/${extra.id}`, { token: tokenAdmin });

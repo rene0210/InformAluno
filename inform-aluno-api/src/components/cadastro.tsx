@@ -274,22 +274,24 @@ export const Cadastro: React.FC = () => {
   };
 
   // --- HUB: carrega os filhos já pré-cadastrados desta conta ---
-  const carregarFilhos = async () => {
+  const carregarFilhos = async (): Promise<Filho[]> => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) return;
+      if (!token) return [];
       const res = await fetch("http://127.0.0.1:8787/api/cadastro/filhos", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      if (!res.ok) return; // sem sessão/vínculo → segue com o formulário direto
+      if (!res.ok) return []; // sem sessão/vínculo → segue com o formulário direto
       const dados = await res.json().catch(() => null);
       const lista: Filho[] = Array.isArray(dados?.filhos) ? dados.filhos : [];
       if (lista.length > 0) {
         setFilhos(lista);
         setVerCartoes(true);
       }
+      return lista;
     } catch {
       // Sem servidor: continua com o formulário normal
+      return [];
     } finally {
       setCarregandoFilhos(false);
     }
@@ -429,27 +431,39 @@ export const Cadastro: React.FC = () => {
       }
 
       setOkEdicao(dados.message || "Dados atualizados!");
-      // Sincroniza os "originais" para uma eventual nova salvar — o lado
-      // removido pelo 🗑 sai do modal (id vira null, o bloco some)
-      setEditando((prev) =>
-        prev
-          ? {
-              ...prev,
-              pai: editRemovido === "pai" ? "" : editNomePai.trim(),
-              pai_telefone: editRemovido === "pai" ? "" : editTelPai.trim(),
-              pai_foto: editRemovido === "pai" ? null : editFotoPai,
-              pai_id: editRemovido === "pai" ? null : prev.pai_id,
-              mae: editRemovido === "mae" ? "" : editNomeMae.trim(),
-              mae_telefone: editRemovido === "mae" ? "" : editTelMae.trim(),
-              mae_foto: editRemovido === "mae" ? null : editFotoMae,
-              mae_id: editRemovido === "mae" ? null : prev.mae_id,
-            }
-          : prev
-      );
       setEditRemovido(null);
       setEditAlvoFoto(null);
-      if (dados.alterado) {
-        await carregarFilhos(); // recarrega os cartões com os dados novos
+
+      // Ressincroniza o modal com o servidor: depois de uma remoção o 2º
+      // responsável pode ter sido promovido ao slot 1 — aí os rótulos
+      // ("Responsável"/"2º Responsável") e os ids do bloco mudam.
+      const lista = await carregarFilhos();
+      const atualizado = lista.find((f) => f.id === editando.id);
+      if (atualizado) {
+        setEditando(atualizado);
+        setEditNomePai(atualizado.pai || "");
+        setEditTelPai(atualizado.pai_telefone || "");
+        setEditFotoPai(atualizado.pai_foto || null);
+        setEditNomeMae(atualizado.mae || "");
+        setEditTelMae(atualizado.mae_telefone || "");
+        setEditFotoMae(atualizado.mae_foto || null);
+      } else {
+        // Filho saiu da lista: mantém o estado local sem o lado removido
+        setEditando((prev) =>
+          prev
+            ? {
+                ...prev,
+                pai: editRemovido === "pai" ? "" : editNomePai.trim(),
+                pai_telefone: editRemovido === "pai" ? "" : editTelPai.trim(),
+                pai_foto: editRemovido === "pai" ? null : editFotoPai,
+                pai_id: editRemovido === "pai" ? null : prev.pai_id,
+                mae: editRemovido === "mae" ? "" : editNomeMae.trim(),
+                mae_telefone: editRemovido === "mae" ? "" : editTelMae.trim(),
+                mae_foto: editRemovido === "mae" ? null : editFotoMae,
+                mae_id: editRemovido === "mae" ? null : prev.mae_id,
+              }
+            : prev
+        );
       }
     } catch {
       setErroEdicao("Erro ao conectar com o servidor.");

@@ -1918,38 +1918,43 @@ app.put(
 
       const alteracoes: string[] = [];
 
-      // Aplica as mudanças de um dos lados (pai/mãe). Retorna mensagem
-      // de erro ou null quando tudo ok.
-      const processarAlvo = async (
-        alvo: "pai" | "mae",
-        dados: unknown
-      ): Promise<string | null> => {
+      // Aplica as mudanças de um dos lados. Retorna mensagem de erro ou
+      // null quando tudo ok. O SLOT é resolvido pelo id no banco (e não
+      // pela chave "pai"/"mae" do payload): depois de uma remoção, o 2º
+      // responsável é promovido ao slot 1 e a tela, com o modal ainda
+      // aberto, continua mandando a chave antiga — confiar nela faria a
+      // edição ser descartada em silêncio.
+      const processarAlvo = async (dados: unknown): Promise<string | null> => {
         if (!dados || typeof dados !== "object") return null;
         const campos = dados as Record<string, unknown>;
         const responsavelId = Number(campos.id) || 0;
         if (!responsavelId) return null;
 
-        const rotulo = alvo === "pai" ? "Responsável" : "2º Responsável";
-        const pertence = alvo === "pai" ? aluno.responsavel_id : aluno.responsavel2_id;
-        if (pertence !== responsavelId) return null;
+        // Estado relido do banco: uma remoção no mesmo request já mudou
+        // os slots (e protege contra tirar os dois de uma vez)
+        const estado = await c.env.DB.prepare(
+          "SELECT responsavel_id, responsavel2_id FROM alunos WHERE id = ?"
+        )
+          .bind(aluno.id)
+          .first<{ responsavel_id: number | null; responsavel2_id: number | null }>();
+        if (!estado) return "Aluno não encontrado.";
+
+        const slot: "pai" | "mae" | null =
+          estado.responsavel_id === responsavelId
+            ? "pai"
+            : estado.responsavel2_id === responsavelId
+              ? "mae"
+              : null;
+        if (!slot) {
+          return "O responsável enviado não está vinculado a este aluno.";
+        }
+
+        const rotulo = slot === "pai" ? "Responsável" : "2º Responsável";
 
         // Remoção pedida no modal (🗑): desvincula o responsável deste aluno.
-        // O estado é relido do banco para uma remoção no mesmo request não
-        // enxergar os valores antigos (ex.: tirar os dois de uma vez).
         if (campos.remover === true) {
-          const estado = await c.env.DB.prepare(
-            "SELECT responsavel_id, responsavel2_id FROM alunos WHERE id = ?"
-          )
-            .bind(aluno.id)
-            .first<{ responsavel_id: number | null; responsavel2_id: number | null }>();
-          if (!estado) return "Aluno não encontrado.";
-
-          const pertenceAgora =
-            alvo === "pai" ? estado.responsavel_id : estado.responsavel2_id;
-          if (pertenceAgora !== responsavelId) return null;
-
           const outroAgora =
-            alvo === "pai" ? estado.responsavel2_id : estado.responsavel_id;
+            slot === "pai" ? estado.responsavel2_id : estado.responsavel_id;
           if (!outroAgora) {
             return "O aluno precisa manter ao menos um responsável.";
           }
@@ -1961,7 +1966,7 @@ app.put(
             .first<{ id: number; nome: string }>();
           if (!removido) return null;
 
-          if (alvo === "pai") {
+          if (slot === "pai") {
             // O 2º responsável assume a vaga principal (mesmo critério
             // do pré-cadastro quando só existe um)
             await c.env.DB.prepare(
@@ -2058,9 +2063,9 @@ app.put(
         return null;
       };
 
-      const erroPai = await processarAlvo("pai", body.pai);
+      const erroPai = await processarAlvo(body.pai);
       if (erroPai) return c.json({ error: erroPai }, 400);
-      const erroMae = await processarAlvo("mae", body.mae);
+      const erroMae = await processarAlvo(body.mae);
       if (erroMae) return c.json({ error: erroMae }, 400);
 
       if (alteracoes.length === 0) {
