@@ -276,6 +276,22 @@ app.use("/api/painel/*", autenticar(["RESPONSAVEL", "ADMIN"]));
 // sem nenhuma rota de exclusão para este perfil)
 app.use("/api/secretaria/*", autenticar(["SECRETARIA", "ADMIN"]));
 
+// Reconhecimento facial na portaria: a lista de candidatos devolve FOTO de
+// menor e /api/verificar devolve CPF — por isso exige sessão. RESPONSAVEL
+// entra porque a tela /escolha leva o próprio responsável para /portaria.
+app.use(
+  "/api/verificar/candidatos",
+  autenticar(["PORTARIA", "MOTORISTA", "RESPONSAVEL", "ADMIN"])
+);
+app.use(
+  "/api/verificar",
+  autenticar(["PORTARIA", "MOTORISTA", "RESPONSAVEL", "ADMIN"])
+);
+
+// Pré-cadastro: mesma lista das rotas irmãs (/api/cadastro/filhos e
+// /api/cadastro/responsaveis). Sem sessão, nada é gravado.
+app.use("/api/cadastro", autenticar(["RESPONSAVEL", "SECRETARIA", "ADMIN"]));
+
 // ============================================================
 // 1. ROTAS EXCLUSIVAS DE ADMINISTRAÇÃO (/api/admin)
 // ============================================================
@@ -614,10 +630,23 @@ app.post("/api/auth/registro", async (c) => {
       emailBoasVindas(String(nome), String(email), roleFinal)
     );
 
+    // Sessão imediata: a tela seguinte (/cadastro) já grava o pré-cadastro e
+    // essas rotas exigem Authorization. Sem este token, a conta recém-criada
+    // não conseguiria salvar nada.
+    const token = crypto.randomUUID();
+    const expiraEm = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString(); // 12h
+
+    await c.env.DB.prepare(
+      "INSERT INTO sessoes (token, usuario_id, expira_em) VALUES (?, ?, ?)"
+    )
+      .bind(token, novoUsuario.id, expiraEm)
+      .run();
+
     return c.json({
       success: true,
       message: "Conta criada com sucesso!",
       usuario: novoUsuario,
+      token,
     }, 201);
   } catch (e: unknown) {
     const message = getErrorMessage(e);
@@ -2176,7 +2205,14 @@ app.post("/api/cadastro", async (c) => {
 
     // Conta logada que está fazendo o pré-cadastro — vincula o pai/mãe
     // à conta, para o painel deles encontrarem os filhos depois.
-    const usuarioId = Number(body.usuario_id) || 0;
+    // Quando quem cria é o próprio responsável, o vínculo sai da SESSÃO e o
+    // usuario_id do corpo é ignorado (senão daria para grudar o aluno na
+    // conta de outra pessoa). Secretaria e admin cadastram em nome de
+    // terceiros e já podem vincular por /api/admin/usuarios/:id/aluno —
+    // para eles o corpo continua valendo.
+    const papel = c.get("usuarioRole");
+    const usuarioId =
+      papel === "RESPONSAVEL" ? c.get("usuarioId") : Number(body.usuario_id) || 0;
 
     const nome = body.nome;
     const matricula = body.matricula;

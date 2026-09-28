@@ -95,6 +95,7 @@ const main = async () => {
   }
 
   const rCad = await req("POST", "/api/cadastro", {
+    token: tokenAdmin,
     body: {
       usuario_id: null,
       nome: "Smoke Serie Cards",

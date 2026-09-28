@@ -73,7 +73,7 @@ $ap = Invoke-JsonSend "POST" ("/api/convite/" + $tok + "/aprovar") @{ decisao = 
 Write-Output ("APROVAR=" + $ap.code + " body=" + $ap.body)
 
 # Candidatos
-$cd = Invoke-GetAuth "/api/verificar/candidatos" $null
+$cd = Invoke-GetAuth "/api/verificar/candidatos" $tokenPai
 $cdArr = $cd.body | ConvertFrom-Json
 if ($cdArr -isnot [array]) { $cdArr = @($cdArr) }
 foreach ($x in $cdArr) { if ($x -and $x.matricula -eq "990301") { Write-Output ("candidato terceiro=" + $x.terceiro_nome) } }

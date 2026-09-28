@@ -102,7 +102,7 @@ $cad = Invoke-JsonSend "POST" "/api/cadastro" @{
   responsavel2Nome = "Mae Teste Notas"
   cpf2          = "92266677788"
   status        = "PENDENTE_VALIDACAO"
-} $null
+} $tokenPai
 Check "Pre-cadastro com vinculo do pai" ($cad.code -eq 201) ("[HTTP " + $cad.code + "]")
 
 # ===== 6. Professor lista alunos (aluno de teste + Anthony) =====

@@ -51,6 +51,9 @@ export const RegistroUsuario: React.FC = () => {
       if (resposta.ok) {
         // 1. Grava a sessão do usuário logado
         localStorage.setItem("usuarioLogado", JSON.stringify(dados.usuario));
+        // Token da sessão criada junto com a conta: as próximas telas
+        // (/cadastro) mandam Authorization para gravar o pré-cadastro.
+        if (dados.token) localStorage.setItem("token", dados.token);
 
         setSucesso(
           "Conta criada com sucesso! Redirecionando para a etapa de validação facial...",

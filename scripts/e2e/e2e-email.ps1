@@ -147,7 +147,7 @@ $cad = Invoke-JsonSend "POST" "/api/cadastro" @{
   cpf2             = "95544455554"
   status           = "PENDENTE_VALIDACAO"
   usuario_id       = $paiId
-} $null
+} $tokenPai
 Check "Pre-cadastro com vinculo (gatilho)" ($cad.code -eq 201) ("[HTTP " + $cad.code + "]")
 
 # Acha o aluno de teste pelo admin

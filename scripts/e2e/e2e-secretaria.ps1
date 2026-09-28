@@ -82,7 +82,7 @@ $cad = Invoke-JsonSend "POST" "/api/cadastro" @{
   responsavel2Nome = "Mae Teste Sec"
   cpf2            = "94444455566"
   status          = "PENDENTE_VALIDACAO"
-} $null
+} $tokenSec
 Check "Pre-cadastro de teste criado" ($cad.code -eq 201) ("[HTTP " + $cad.code + "]")
 
 # ===== 5. Secretaria lista os pre-cadastros =====

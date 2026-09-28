@@ -85,7 +85,7 @@ $cad = Invoke-JsonSend "POST" "/api/cadastro" @{
   cpf2             = "99100000329"
   status           = "PENDENTE_VALIDACAO"
   usuario_id       = $paiId
-} $null
+} $tokenPai
 Check "Pre-cadastro atestado" (($cad.code -eq 201) -or ($cad.code -eq 400)) ("[HTTP " + $cad.code + "]")
 
 # Acha o aluno pela matricula

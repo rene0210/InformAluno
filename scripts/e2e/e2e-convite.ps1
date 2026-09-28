@@ -153,7 +153,7 @@ foreach ($k in @("A", "B", "C")) {
     # Regressao: o campo terceiro NAO deve mais ser aceito no cadastro —
     # convite de 3o existe apenas pelo botao + do hub (POST /api/convite/terceiro)
     terceiro         = @{ nome = "Terceiro Ignorado"; cpf = "99100002615"; foto = "data:image/jpeg;base64,AAAA" }
-  } $null
+  } $tokenPai
   $cadResp[$k] = $r
   Check ("Pre-cadastro " + $k) (($r.code -eq 201) -or ($r.code -eq 400)) ("[HTTP " + $r.code + "]")
 }
@@ -306,7 +306,7 @@ $aprPai = Invoke-JsonSend "POST" ("/api/convite/" + $tokenA2 + "/aprovar") @{ de
 Check "Pai aprova -> 200" ($aprPai.code -eq 200) ("[HTTP " + $aprPai.code + "] " + $aprPai.body)
 
 # ===== 16. Terceiro vira 3o responsavel =====
-$cands = Invoke-GetAuth "/api/verificar/candidatos" $null
+$cands = Invoke-GetAuth "/api/verificar/candidatos" $tokenPai
 $tercA = $null
 if ($cands.code -eq 200) {
   $arrC = $cands.body | ConvertFrom-Json
@@ -381,7 +381,7 @@ if ($tokenC) {
   }
 }
 
-$cands2 = Invoke-GetAuth "/api/verificar/candidatos" $null
+$cands2 = Invoke-GetAuth "/api/verificar/candidatos" $tokenPai
 $tercB = $null; $tercC = $null
 if ($cands2.code -eq 200) {
   $arrC2 = $cands2.body | ConvertFrom-Json
@@ -540,7 +540,7 @@ Check "Hub: aprovacao mostra o terceiro" (($getAprHubData -ne $null) -and ($getA
 $aprHub = Invoke-JsonSend "POST" ("/api/convite/" + $plHubToken + "/aprovar") @{ decisao = "APROVAR" } $tokenPai
 Check "Hub: pai aprova -> 200" ($aprHub.code -eq 200) ("[HTTP " + $aprHub.code + "] " + $aprHub.body)
 
-$candsHub = Invoke-GetAuth "/api/verificar/candidatos" $null
+$candsHub = Invoke-GetAuth "/api/verificar/candidatos" $tokenPai
 $tercHub = $null
 if ($candsHub.code -eq 200) {
   $arrHub = $candsHub.body | ConvertFrom-Json

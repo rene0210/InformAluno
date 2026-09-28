@@ -233,13 +233,40 @@ const main = async () => {
     r.status === 200 && r.data && r.data.foto === FOTO_1PX && r.data.materia === materiaSmoke
   );
 
-  r = await req("GET", "/api/verificar/candidatos");
+  r = await req("GET", "/api/verificar/candidatos", { token: portaria.token });
   const profCand =
     r.status === 200 &&
     (r.data || []).some(
       (c) => c.eh_professor && c.foto_professor === FOTO_1PX && c.materia === materiaSmoke
     );
   check("Professor aparece nos candidatos faciais", profCand, `HTTP ${r.status}`);
+
+  // ---------- SEGURANCA: a lista de rostos e o CPF nao ficam abertos ----------
+  r = await req("GET", "/api/verificar/candidatos");
+  check(
+    "GET /api/verificar/candidatos SEM token -> 401",
+    r.status === 401,
+    `HTTP ${r.status}`
+  );
+  r = await req("GET", "/api/verificar/candidatos", { token: professor.token });
+  check(
+    "GET /api/verificar/candidatos com perfil de PROFESSOR -> 403",
+    r.status === 403,
+    `HTTP ${r.status}`
+  );
+  r = await req("POST", "/api/verificar", { body: { foto: FOTO_1PX } });
+  check("POST /api/verificar SEM token -> 401", r.status === 401, `HTTP ${r.status}`);
+  r = await req("POST", "/api/cadastro", { body: { nome: "X", matricula: "0" } });
+  check("POST /api/cadastro SEM token -> 401", r.status === 401, `HTTP ${r.status}`);
+  r = await req("POST", "/api/cadastro", {
+    token: professor.token,
+    body: { nome: "X", matricula: "0" },
+  });
+  check(
+    "POST /api/cadastro com perfil de PROFESSOR -> 403",
+    r.status === 403,
+    `HTTP ${r.status}`
+  );
 
   // ---------- DASHBOARD DA DIRETORIA: cards + feed ----------
   r = await req("GET", "/api/diretoria/dashboard", { token: diretor.token });

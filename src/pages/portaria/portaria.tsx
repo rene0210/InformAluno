@@ -274,11 +274,19 @@ export const Portaria: React.FC = () => {
           return;
         }
 
-        // 2. Busca as fotos dos pré-cadastros
-        const resposta = await fetch("http://127.0.0.1:8787/api/verificar/candidatos");
+        // 2. Busca as fotos dos pré-cadastros. A rota exige sessão: a lista
+        //    devolve foto de menor, então nada de consulta anônima.
+        const token = localStorage.getItem("token") || "";
+        const resposta = await fetch("http://127.0.0.1:8787/api/verificar/candidatos", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
         if (!resposta.ok) {
           setDados((prev) => ({ ...prev, status: "erro" }));
-          setMensagem("Erro ao consultar o banco de dados.");
+          setMensagem(
+            resposta.status === 401 || resposta.status === 403
+              ? "Sessão expirada ou sem permissão. Faça login novamente."
+              : "Erro ao consultar o banco de dados."
+          );
           return;
         }
         const candidatos: Candidato[] = await resposta.json();

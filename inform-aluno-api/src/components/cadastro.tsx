@@ -204,7 +204,12 @@ export const Cadastro: React.FC = () => {
     try {
       const resposta = await fetch("http://127.0.0.1:8787/api/cadastro", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          // Rota protegida — manda a sessão. O corpo só vale para
+          // secretaria/admin; para o próprio responsável o vínculo sai do token.
+          Authorization: `Bearer ${localStorage.getItem("token") || ""}`,
+        },
         body: JSON.stringify({
           usuario_id: usuarioLogadoId,
           nome,

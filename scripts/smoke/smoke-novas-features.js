@@ -146,6 +146,7 @@ const main = async () => {
   let demo = (filhosDemo.data.filhos || []).find((f) => f.matricula === "990208");
   if (!demo) {
     const r = await req("POST", "/api/cadastro", {
+      token: sessaoPaiDemo ? sessaoPaiDemo.token : "",
       body: {
         usuario_id: paiDemoUser.id,
         nome: "Aluno Demonstracao InformAluno",
@@ -196,6 +197,7 @@ const main = async () => {
   let meuFilho = (filhos.data.filhos || []).find((f) => f.matricula === "990207");
   if (!meuFilho) {
     const r = await req("POST", "/api/cadastro", {
+      token: sessaoPai.token,
       body: {
         usuario_id: sessaoPai.usuario.id,
         nome: "Aluno Smoke Edit",
@@ -499,9 +501,12 @@ const main = async () => {
   }
 
   // (1) Só o 1º responsável -> 201
+  // usuario_id do corpo aponta de PROPÓSITO para outra conta: como quem cria
+  // é o próprio responsável, o vínculo tem que sair da SESSÃO e ignorar isto.
   let r1 = await req("POST", "/api/cadastro", {
+    token: sessaoPaiDemo.token,
     body: {
-      usuario_id: paiDemoUser.id,
+      usuario_id: sessaoPai ? sessaoPai.usuario.id : paiDemoUser.id,
       nome: "Aluno Um Responsavel",
       matricula: "990215",
       serie: "7º Ano B",
@@ -519,9 +524,20 @@ const main = async () => {
     !!alunoUm && !!alunoUm.pai_nome && !alunoUm.mae_nome,
     alunoUm ? `pai=${alunoUm.pai_nome} mae=${alunoUm.mae_nome}` : "aluno nao encontrado"
   );
+  // Mesmo com o usuario_id do corpo apontando para a conta de outro pai,
+  // o aluno NÃO pode aparecer no painel dessa outra pessoa.
+  const filhosOutro = sessaoPai
+    ? await req("GET", "/api/cadastro/filhos", { token: sessaoPai.token })
+    : { status: 0, data: {} };
+  check(
+    "usuario_id do corpo nao gruda o aluno na conta de outra pessoa",
+    !!sessaoPai && !(filhosOutro.data.filhos || []).some((f) => f.matricula === "990215"),
+    `HTTP ${filhosOutro.status}`
+  );
 
   // (2) Só o 2º responsável (1º removido na tela) -> promovido ao slot 1
   let r2 = await req("POST", "/api/cadastro", {
+    token: sessaoPaiDemo.token,
     body: {
       usuario_id: paiDemoUser.id,
       nome: "Aluno So Segundo Responsavel",
@@ -544,6 +560,7 @@ const main = async () => {
 
   // (3) Nenhum responsável -> 400
   const r3 = await req("POST", "/api/cadastro", {
+    token: sessaoPaiDemo.token,
     body: {
       nome: "Aluno Sem Responsavel",
       matricula: "990217",
@@ -575,6 +592,7 @@ const main = async () => {
 
   // (5) REMOÇÃO DO 1º RESPONSÁVEL COM O 2º PRESENTE -> promoção do 2º
   let r5 = await req("POST", "/api/cadastro", {
+    token: sessaoPaiDemo.token,
     body: {
       usuario_id: paiDemoUser.id,
       nome: "Aluno Dois Responsaveis",
