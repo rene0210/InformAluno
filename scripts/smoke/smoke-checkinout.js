@@ -5,6 +5,9 @@
 const BASE = "http://127.0.0.1:8787";
 const SENHA = "informaluno123";
 const ALUNO_ID = 56; // aluno demo (mat 990208)
+// Id fora da família do pai de teste — serve para provar que o responsável
+// NÃO grava movimento de aluno que não é filho dele.
+const ALUNO_FORA_DA_FAMILIA = 999999;
 const FOTO_1PX =
   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
@@ -123,9 +126,15 @@ const main = async () => {
 
   r = await req("POST", "/api/portaria/registrar-entrada", {
     token: pai.token,
-    body: { pessoaId: ALUNO_ID, nome: "X", tipo: "ALUNO", detalhe: "1" },
+    body: { pessoaId: ALUNO_FORA_DA_FAMILIA, nome: "X", tipo: "ALUNO", detalhe: "1" },
   });
-  check("RESPONSAVEL nao registra na portaria -> 403", r.status === 403, `HTTP ${r.status}`);
+  check("RESPONSAVEL sem vinculo com o aluno -> 403", r.status === 403, `HTTP ${r.status}`);
+
+  r = await req("POST", "/api/portaria/registrar-entrada", {
+    token: pai.token,
+    body: { pessoaId: ALUNO_ID, nome: "X", tipo: "PROFESSOR", detalhe: "X" },
+  });
+  check("RESPONSAVEL nao registra professor -> 403", r.status === 403, `HTTP ${r.status}`);
 
   r = await req("PATCH", "/api/professor/reconhecimento", {
     token: pai.token,
@@ -183,8 +192,11 @@ const main = async () => {
     body: registro,
   });
   const mov2 = r.data ? r.data.movimento : null;
+  // As duas validações acontecem a poucos segundos — bem dentro da janela de
+  // 2 minutos do totem. A regra é por contagem do dia (sem janela de tempo):
+  // o 2º toque tem que ser check-out, nunca um segundo check-in.
   check(
-    "2º registro ALTERNA o movimento",
+    "2 validacoes seguidas (dentro de 2 min) alternam checkin -> checkout",
     r.status === 201 && ehMovimento(mov2) && mov2 !== mov1,
     `1=${mov1} 2=${mov2}`
   );
@@ -193,6 +205,20 @@ const main = async () => {
     "2º registro tambem devolve data/hora",
     ehDataHoraBrasilia(dataHora2),
     dataHora2 || "sem dataHora"
+  );
+
+  // ---------- RESPONSAVEL: valida o PRÓPRIO FILHO pela portaria ----------
+  // O /escolha convida o pai/mãe a "validar a entrada pela portaria"; sem este
+  // passe o POST voltava 403 e o check-in do responsável simplesmente não
+  // aparecia (nem entrada, nem saída, nem nome no rastreio).
+  r = await req("POST", "/api/portaria/registrar-entrada", {
+    token: pai.token,
+    body: registro,
+  });
+  check(
+    "RESPONSAVEL registra o PRÓPRIO filho -> 201 com movimento",
+    r.status === 201 && ehMovimento(r.data ? r.data.movimento : null),
+    `HTTP ${r.status} mov=${r.data ? r.data.movimento : "?"}`
   );
 
   // ---------- VAN: devolve o movimento ----------
@@ -288,6 +314,16 @@ const main = async () => {
 
   // ---------- FIDEDIGNIDADE DA DATA/HORA (Brasília, nunca UTC) ----------
   const feed = (r.data && r.data.ultimosRegistros) || [];
+  // O rastreio precisa dizer PASSOU QUEM passou: nome junto do movimento.
+  const nomesNoRastreio = feed
+    .filter((x) => ehMovimento(x.movimento))
+    .map((x) => x.nome)
+    .join(",");
+  check(
+    "Rastreio traz o NOME da pessoa reconhecida",
+    feed.some((x) => ehMovimento(x.movimento) && x.nome === "Aluno Smoke Checkin"),
+    `nomes=[${nomesNoRastreio}]`
+  );
   const horasDoFeed = feed
     .filter((x) => x.nome === "Aluno Smoke Checkin")
     .map((x) => x.hora)

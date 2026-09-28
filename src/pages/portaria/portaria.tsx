@@ -87,7 +87,61 @@ const formatarDataHora = (dataHora: string): string => {
   return `${data.split("-").reverse().join("/")} às ${hora.slice(0, 5)}`;
 };
 
-export const Portaria: React.FC = () => {
+const voltar = () =>
+  window.history.length > 1 ? window.history.back() : (window.location.href = "/");
+
+// Perfis que a API DEIXA reconhecer o rosto e gravar o movimento. Os demais
+// travam em /api/verificar/candidatos ou em /api/portaria/registrar-entrada
+// (403), então em vez de exibir um totem que falha no meio do caminho a tela
+// avisa quem é o perfil e devolve o acesso.
+const PERFIS_DA_TELA = ["PORTARIA", "MOTORISTA", "ADMIN", "RESPONSAVEL"];
+
+const PortariaSemPermissao: React.FC<{ papel: string }> = ({ papel }) => (
+  <>
+    <div className="portaria-bg status-erro" />
+    <Container
+      fluid
+      className="py-4 py-md-5 portaria-container d-flex align-items-center"
+    >
+      <Container>
+        <div className="d-flex justify-content-start mb-3">
+          <Button variant="outline-light" size="sm" onClick={voltar}>
+            ← Voltar
+          </Button>
+        </div>
+        <Row className="mb-4 mb-md-5 text-center header-totem">
+          <Col>
+            <h1 className="app-title mb-2 text-white">InformAluno</h1>
+            <p className="instrucao-camera mb-0 erro">
+              ⛔ Acesso restrito à tela da portaria
+            </p>
+          </Col>
+        </Row>
+        <Row className="justify-content-center g-4">
+          <Col lg={7} md={9} xs={12}>
+            <Card className="camera-card text-center">
+              <div className="section-label">
+                ● PERFIL LOGADO: {papel || "NÃO IDENTIFICADO"}
+              </div>
+              <p className="text-white-50 fs-5 mb-4">
+                O reconhecimento facial é operado por <strong className="text-white">Portaria</strong>,{" "}
+                <strong className="text-white">Motorista</strong> e{" "}
+                <strong className="text-white">Admin</strong> — ou pelo próprio{" "}
+                <strong className="text-white">responsável</strong>, validando o filho.
+                Peça a um operador da portaria ou volte ao seu painel.
+              </p>
+              <Button variant="primary" onClick={voltar}>
+                ← Voltar
+              </Button>
+            </Card>
+          </Col>
+        </Row>
+      </Container>
+    </Container>
+  </>
+);
+
+const PortariaTela: React.FC = () => {
   const webcamRef = useRef<Webcam>(null);
   const [mensagem, setMensagem] = useState<string>(
     "Posicione-se em frente à câmera",
@@ -236,6 +290,16 @@ export const Portaria: React.FC = () => {
           dataHora
             ? `Acesso autorizado! ${rotulo} — ${formatarDataHora(dataHora)}.`
             : `Acesso autorizado! ${rotulo}.`
+        );
+      } else if (resposta.status === 401 || resposta.status === 403) {
+        // Perfil sem permissão (ex.: responsável tentando gravar movimento de
+        // um aluno que não é filho dele) — a tela fica vermelha e não fica
+        // exibindo a foto de quem não passou.
+        const erro = await resposta.json().catch(() => ({ error: "" }));
+        setDados((prev) => ({ ...prev, status: "erro" }));
+        setMensagem(
+          erro.error ||
+            "Sem permissão para gravar o movimento neste perfil."
         );
       } else {
         setMensagem("Acesso autorizado, mas o registro do movimento falhou.");
@@ -594,4 +658,14 @@ export const Portaria: React.FC = () => {
       </Container>
     </>
   );
+};
+
+// Entrada da tela: só os perfis que a API deixa reconhecer E gravar. Os demais
+// (diretoria, secretaria, professor, aluno…) nunca completariam o fluxo — daria
+// 403 na lista de rostos ou na gravação — então veem este aviso, com "← Voltar",
+// em vez de um totem quebrado.
+export const Portaria: React.FC = () => {
+  const papel = perfilLogado().role ?? "";
+  if (!PERFIS_DA_TELA.includes(papel)) return <PortariaSemPermissao papel={papel} />;
+  return <PortariaTela />;
 };

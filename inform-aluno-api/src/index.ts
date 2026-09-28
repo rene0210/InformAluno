@@ -1068,17 +1068,42 @@ const definirMovimento = async (
   return (total?.n || 0) % 2 === 0 ? "CHECKIN" : "CHECKOUT";
 };
 
-// Registrar entrada/saída validada na portaria (porteiro ou motorista).
-// Sempre devolve o movimento (check-in/check-out) junto do resultado.
+// Registrar entrada/saída validada na portaria (porteiro, motorista ou o
+// próprio responsável — o /escolha convida o pai/mãe a "validar a entrada
+// pela portaria"). Sempre devolve o movimento (check-in/check-out) junto do
+// resultado.
 app.post(
   "/api/portaria/registrar-entrada",
-  autenticar(["PORTARIA", "MOTORISTA", "ADMIN"]),
+  autenticar(["PORTARIA", "MOTORISTA", "ADMIN", "RESPONSAVEL"]),
   async (c) => {
     try {
       const { pessoaId, nome, tipo, detalhe, metodoValidacao } = await c.req.json();
 
       if (!pessoaId || !nome || !tipo || !detalhe) {
         return c.json({ error: "Dados incompletos para registrar o movimento." }, 400);
+      }
+
+      // O responsável só grava o movimento do PRÓPRIO FILHO. Sem esta
+      // checagem qualquer conta de pai/mãe marcaria presença de qualquer
+      // aluno pelo rosto — e, na dúvida sobre o id, nem professor.
+      if (c.get("usuarioRole") === "RESPONSAVEL") {
+        if (String(tipo).toUpperCase() === "PROFESSOR") {
+          return c.json(
+            { error: "Responsável só registra o movimento do próprio filho." },
+            403
+          );
+        }
+        const ehDoFilho = await ehResponsavelDoAluno(
+          c.env.DB,
+          c.get("usuarioId"),
+          Number(pessoaId)
+        );
+        if (!ehDoFilho) {
+          return c.json(
+            { error: "Movimento negado: este aluno não é seu filho." },
+            403
+          );
+        }
       }
 
       const movimento = await definirMovimento(c.env.DB, Number(pessoaId), String(tipo));
