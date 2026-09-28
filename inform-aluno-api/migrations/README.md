@@ -34,7 +34,7 @@ Boas práticas aprendidas neste projeto:
 migrations/
 ├── README.md                 ← este arquivo
 └── historico/
-    ├── aplicadas/   (24)     ← SQL executado de fato no D1 local
+    ├── aplicadas/   (25)     ← SQL executado de fato no D1 local
     │                           (criação de tabelas, ALTERs, backfills,
     │                           limpezas de resíduo de smoke/E2E)
     └── inspecoes/   (20)     ← SELECTs de auditoria/evidência (somente leitura)
@@ -50,6 +50,11 @@ migrations/
 - `aplicadas/d1-migracao-cards-notas.sql` criou `alunos.serie`, a tabela
   `notas` no formato atual (por matéria) e o seed de `materias` — tudo isso
   já está refletido no `schema.sql` atual.
+- `aplicadas/d1-hora-brasilia-registros-entrada.sql` deslocou −3h em
+  `registros_entrada.data_hora` (a coluna saía do `CURRENT_TIMESTAMP` do
+  SQLite, que está em **UTC**, e o feed mostrava 3h adiantado). O corte
+  `WHERE id <= 48` é fixo: **não reexecute**, senão as linhas que já nasceram
+  em America/Sao_Paulo (id ≥ 49) seriam corrigidas duas vezes.
 - Os arquivos de "resíduo de smoke" (`cleanup-final.sql`, `limpa-email.sql`,
   `d1-fix-p*`) existem porque os smokes escrevem dados descartáveis; na
   prática os próprios smokes limpam o que criam.

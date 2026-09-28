@@ -187,6 +187,35 @@ div.card.totem-card {
   font-weight: 600;
 }
 
+/* --- FOTO DO CADASTRO APÓS A VALIDAÇÃO --- */
+/* Pequena e embaixo das informações do aluno; só renderiza com status
+   "sucesso", então a borda verde reforça o estado de conferido. */
+.foto-validacao {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.foto-validacao-img {
+  width: 84px;
+  height: 84px;
+  object-fit: cover;
+  border-radius: 14px;
+  border: 2px solid #10b981;
+  background-color: #030712;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  display: block;
+}
+
+.foto-validacao-legenda {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+  color: #10b981;
+}
+
 /* Linha de Responsáveis */
 .responsavel-row {
   display: flex;

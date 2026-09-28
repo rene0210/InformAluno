@@ -25,8 +25,12 @@ interface DadosCheckIn {
   disciplina: string;
   /** Check-in (entrada) ou check-out (saída) devolvido pelo registro */
   movimento: "CHECKIN" | "CHECKOUT" | null;
+  /** Data/hora exata (Brasília) que parou no banco — `YYYY-MM-DD HH:MM:SS` */
+  dataHora: string | null;
   status: "sucesso" | "erro" | "aguardando";
   responsaveis: string[];
+  /** Foto do cadastro (aluno ou professor), exibida só após a validação */
+  foto: string | null;
 }
 
 /** De qual foto do pré-cadastro veio o descritor vencedor */
@@ -74,6 +78,15 @@ const carregarImagem = (src: string): Promise<HTMLImageElement | null> =>
     img.src = src;
   });
 
+// `2026-09-28 10:48:33` -> `28/09/2026 às 10:48`
+// O valor já vem em horário de Brasília (é o que foi gravado no banco), então
+// aqui só formata — nenhum ajuste de fuso, senão a tela mentiria de novo.
+const formatarDataHora = (dataHora: string): string => {
+  const [data, hora] = dataHora.split(" ");
+  if (!data || !hora) return dataHora;
+  return `${data.split("-").reverse().join("/")} às ${hora.slice(0, 5)}`;
+};
+
 export const Portaria: React.FC = () => {
   const webcamRef = useRef<Webcam>(null);
   const [mensagem, setMensagem] = useState<string>(
@@ -89,8 +102,10 @@ export const Portaria: React.FC = () => {
     matricula: "---",
     disciplina: "",
     movimento: null,
+    dataHora: null,
     status: "aguardando",
     responsaveis: [],
+    foto: null,
   });
 
   // Motorista da van opera a MESMA tela do porteiro; a diferença é que o
@@ -168,9 +183,14 @@ export const Portaria: React.FC = () => {
         const resultado = await resposta.json();
         const rotulo =
           resultado.movimento === "CHECKOUT" ? "saída (check-out)" : "entrada (check-in)";
-        setDados((prev) => ({ ...prev, movimento: resultado.movimento ?? null }));
+        const dataHora: string | null = resultado.dataHora ?? null;
+        setDados((prev) => ({ ...prev, movimento: resultado.movimento ?? null, dataHora }));
+        // Mesma data/hora do e-mail enviado aos responsáveis — se o totem
+        // mostrasse outra, o aviso pareceria desatualizado.
         setMensagem(
-          `🚐 Aluno registrado na van — ${rotulo}! Responsáveis, secretaria e coordenação avisados.`
+          `🚐 Aluno registrado na van — ${rotulo}${
+            dataHora ? ` em ${formatarDataHora(dataHora)}` : ""
+          }! Responsáveis, secretaria e coordenação avisados.`
         );
       } else {
         setMensagem("Aluno reconhecido, mas o registro na van falhou.");
@@ -203,11 +223,19 @@ export const Portaria: React.FC = () => {
       );
       if (resposta.ok) {
         const resultado = await resposta.json();
-        setDados((prev) => ({ ...prev, movimento: resultado.movimento ?? null }));
-        setMensagem(
+        const dataHora: string | null = resultado.dataHora ?? null;
+        setDados((prev) => ({ ...prev, movimento: resultado.movimento ?? null, dataHora }));
+        // A mensagem publica a MESMA data/hora que foi gravada no banco: é o
+        // que o operador lê no totem e o que precisa bater com o feed da
+        // diretoria (antes o totem não dizia a hora e o registro saía em UTC).
+        const rotulo =
           resultado.movimento === "CHECKOUT"
-            ? "Acesso autorizado! 🔽 Saída registrada (check-out)."
-            : "Acesso autorizado! 🔼 Entrada registrada (check-in)."
+            ? "🔽 Saída registrada (check-out)"
+            : "🔼 Entrada registrada (check-in)";
+        setMensagem(
+          dataHora
+            ? `Acesso autorizado! ${rotulo} — ${formatarDataHora(dataHora)}.`
+            : `Acesso autorizado! ${rotulo}.`
         );
       } else {
         setMensagem("Acesso autorizado, mas o registro do movimento falhou.");
@@ -317,6 +345,13 @@ export const Portaria: React.FC = () => {
             vinculo = "3º responsável";
           }
 
+          // Foto que ilustra a validação: a do ALUNO (a coluna da direita é
+          // que descreve o aluno); professor usa a própria. Sem foto cadastrada
+          // o bloco simplesmente não aparece — nunca exibe rosto trocado.
+          const fotoValidada = ehProfessor
+            ? melhorCandidato.foto_professor ?? null
+            : melhorCandidato.foto_aluno ?? null;
+
           setDados({
             identificadoPapel: ehProfessor
               ? "PROFESSOR"
@@ -329,12 +364,14 @@ export const Portaria: React.FC = () => {
             matricula: ehProfessor ? "" : melhorCandidato.matricula,
             disciplina,
             movimento: null,
+            dataHora: null,
             status: "sucesso",
             responsaveis: [
               melhorCandidato.pai_nome,
               melhorCandidato.mae_nome,
               melhorCandidato.terceiro_nome,
             ].filter((nome): nome is string => Boolean(nome)),
+            foto: fotoValidada,
           });
           if (ehMotorista) {
             if (ehProfessor) {
@@ -480,6 +517,13 @@ export const Portaria: React.FC = () => {
                         </Badge>
                       )}
                     </div>
+                    {/* Horário exato da gravação — é a prova visível de que a
+                        data/hora do check-in/check-out está correta. */}
+                    {dados.status === "sucesso" && dados.dataHora && (
+                      <div className="text-white-50 small mt-2">
+                        🕒 Registrado em {formatarDataHora(dados.dataHora)}
+                      </div>
+                    )}
                   </Col>
 
                   {/* Lateral: informações do aluno e matrícula (ou matéria do professor) */}
@@ -498,6 +542,21 @@ export const Portaria: React.FC = () => {
                         <div className="text-white-50 mt-2">
                           Matrícula:{" "}
                           <span className="text-white tech-code">{dados.matricula}</span>
+                        </div>
+                      )}
+
+                      {/* Foto do cadastro, pequena e só quando a validação deu
+                          certo — confirma que quem passou corresponde ao aluno. */}
+                      {dados.status === "sucesso" && dados.foto && (
+                        <div className="foto-validacao mt-3">
+                          <img
+                            className="foto-validacao-img"
+                            src={dados.foto}
+                            alt={`Foto do cadastro de ${dados.alunoNome}`}
+                          />
+                          <span className="foto-validacao-legenda">
+                            ✓ Foto do cadastro
+                          </span>
                         </div>
                       )}
                     </div>

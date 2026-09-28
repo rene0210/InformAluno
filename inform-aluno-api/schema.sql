@@ -101,6 +101,12 @@ CREATE TABLE IF NOT EXISTS registros_entrada (
   detalhe TEXT,
   metodo_validacao TEXT NOT NULL DEFAULT 'BIOMETRIA_FACIAL',
   movimento TEXT, -- 'CHECKIN' ou 'CHECKOUT' — alterna por pessoa/dia em cada reconhecimento facial
+  -- ATENÇÃO: o DEFAULT abaixo é UTC (CURRENT_TIMESTAMP do SQLite), mas a
+  -- aplicação NUNCA depende dele — os INSERTs de index.ts sempre enviam
+  -- `data_hora` pronto em America/Sao_Paulo via formatarBrasilia(), e as
+  -- consultas de "hoje" usam hojeBrasilia(). Manter o DEFAULT intacto evita
+  -- divergir do banco local; se um INSERT futuro omitir a coluna, o smoke
+  -- "Hora do feed bate com o relogio de Brasilia" acusa (fica 3h adiantado).
   data_hora TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -50,6 +50,42 @@ interface SessionVars {
   usuarioRole: string;
 }
 
+// ---------------------------------------------------------------
+// RELÓGIO DE BRASÍLIA — fonte única de "agora"/"hoje" da portaria
+// ---------------------------------------------------------------
+// O SQLite grava CURRENT_TIMESTAMP em UTC e o servidor também roda em UTC,
+// o que deixava registros_entrada 3h adiantado (13:36 gravado às 10:36) e
+// trocava o "dia de hoje" às 21h da noite — aí a alternância de check-in/
+// check-out e o feed da diretoria perdiam a fidedignidade. Como o e-mail da
+// van já falava em America/Sao_Paulo, mensagem e registro também divergiam.
+// Por isso gravação, contagem de "hoje" e resposta da API saem todos daqui.
+// America/Sao_Paulo é UTC-3 fixo: o Brasil extinguiu o horário de verão em 2019.
+const formatoBrasilia = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hour12: false,
+});
+
+/** `YYYY-MM-DD HH:MM:SS` no horário de Brasília — formato gravado em `data_hora` */
+const formatarBrasilia = (momento: Date = new Date()): string => {
+  const partes = formatoBrasilia.formatToParts(momento);
+  const valor = (tipo: string): string =>
+    partes.find((p) => p.type === tipo)?.value ?? "00";
+  // Alguns runtimes devolvem "24" para a meia-noite quando hour12 = false
+  const hora = valor("hour") === "24" ? "00" : valor("hour");
+  return `${valor("year")}-${valor("month")}-${valor("day")} ${hora}:${valor(
+    "minute"
+  )}:${valor("second")}`;
+};
+
+/** Apenas o dia de Brasília (`YYYY-MM-DD`) para as consultas de "quem passou hoje" */
+const hojeBrasilia = (): string => formatarBrasilia().slice(0, 10);
+
 const app = new Hono<{ Bindings: Env; Variables: SessionVars }>();
 
 // Configuração Globais de CORS
@@ -990,10 +1026,13 @@ const definirMovimento = async (
 ): Promise<"CHECKIN" | "CHECKOUT"> => {
   const filtro =
     tipo === "PROFESSOR" ? "AND tipo = 'PROFESSOR'" : "AND tipo <> 'PROFESSOR'";
+  // "Hoje" é o dia de Brasília (e não o do UTC): sem isso, quem entra às 20h50
+  // e sai às 21h10 cruzaria a virada do dia UTC e ganharia um 2º check-in.
+  const hoje = hojeBrasilia();
   const total = await db
     .prepare(
       `SELECT COUNT(*) AS n FROM registros_entrada
-       WHERE pessoa_id = ? AND DATE(data_hora) = DATE('now') ${filtro}`
+       WHERE pessoa_id = ? AND DATE(data_hora) = '${hoje}' ${filtro}`
     )
     .bind(pessoaId)
     .first<{ n: number }>();
@@ -1015,17 +1054,31 @@ app.post(
 
       const movimento = await definirMovimento(c.env.DB, Number(pessoaId), String(tipo));
 
+      // Grava a hora de Brasília explicitamente: o DEFAULT da tabela é o
+      // CURRENT_TIMESTAMP do SQLite, que está em UTC e aparecia 3h adiantado.
+      const dataHora = formatarBrasilia();
       await c.env.DB.prepare(
-        `INSERT INTO registros_entrada (pessoa_id, nome, tipo, detalhe, metodo_validacao, movimento) 
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO registros_entrada (pessoa_id, nome, tipo, detalhe, metodo_validacao, movimento, data_hora) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
-        .bind(pessoaId, nome, tipo, detalhe, metodoValidacao || "BIOMETRIA_FACIAL", movimento)
+        .bind(
+          pessoaId,
+          nome,
+          tipo,
+          detalhe,
+          metodoValidacao || "BIOMETRIA_FACIAL",
+          movimento,
+          dataHora
+        )
         .run();
 
       return c.json(
         {
           success: true,
           movimento,
+          // Mesma data/hora que foi parar no banco — a tela mostra este valor,
+          // garantindo que a mensagem de check-in/check-out bate com o registro.
+          dataHora,
           message:
             movimento === "CHECKIN"
               ? "Entrada registrada (check-in) com sucesso!"
@@ -1069,11 +1122,16 @@ app.post("/api/van/registrar", autenticar(["MOTORISTA", "ADMIN"]), async (c) => 
     // 2º = check-out (mesma sequência da portaria).
     const movimento = await definirMovimento(c.env.DB, aluno.id, "ALUNO");
 
+    // Um único "agora" alimenta o banco e a mensagem: assim o dia/hora do
+    // e-mail é sempre exatamente o que ficou gravado em data_hora.
+    const agora = new Date();
+    const dataHora = formatarBrasilia(agora);
+
     await c.env.DB.prepare(
-      `INSERT INTO registros_entrada (pessoa_id, nome, tipo, detalhe, metodo_validacao, movimento)
-       VALUES (?, ?, 'VAN', 'Van Escolar', 'BIOMETRIA_FACIAL', ?)`
+      `INSERT INTO registros_entrada (pessoa_id, nome, tipo, detalhe, metodo_validacao, movimento, data_hora)
+       VALUES (?, ?, 'VAN', 'Van Escolar', 'BIOMETRIA_FACIAL', ?, ?)`
     )
-      .bind(aluno.id, aluno.nome, movimento)
+      .bind(aluno.id, aluno.nome, movimento, dataHora)
       .run();
 
     // Destinatários: responsável vinculado (pai/mãe) + secretaria + coordenação
@@ -1081,8 +1139,9 @@ app.post("/api/van/registrar", autenticar(["MOTORISTA", "ADMIN"]), async (c) => 
     const equipe = await emailsSecretariaECoordenador(c.env.DB);
     const destinatarios = Array.from(new Set([...pais, ...equipe]));
 
-    // Dia e hora de Brasília, mesmo quando o servidor está em UTC
-    const quando = new Date().toLocaleString("pt-BR", {
+    // Dia e hora de Brasília — lidas do MESMO instante que foi gravado em
+    // data_hora, então o e-mail nunca mostra horário diferente do registro.
+    const quando = agora.toLocaleString("pt-BR", {
       timeZone: "America/Sao_Paulo",
       dateStyle: "full",
       timeStyle: "short",
@@ -1100,6 +1159,8 @@ app.post("/api/van/registrar", autenticar(["MOTORISTA", "ADMIN"]), async (c) => 
       message: "Embarque registrado! Responsáveis, secretaria e coordenação avisados.",
       aluno: aluno.nome,
       quando,
+      // Idem portaria: valor bravo que parou no banco (YYYY-MM-DD HH:MM:SS)
+      dataHora,
       movimento,
       avisoEmail: envio.modo,
     }, 201);
@@ -1583,31 +1644,34 @@ app.post("/api/chat/mensagens", autenticar(CHAT_ROLES), async (c) => {
 
 app.get("/api/diretoria/dashboard", async (c) => {
   try {
+    // "Hoje" é o dia de Brasília — mesma base usada na gravação, para o card
+    // não deixar de contar quem entrou ontem às 22h (dia seguinte em UTC).
+    const hoje = hojeBrasilia();
     // Presentes: lado do aluno (ALUNO, VAN e RESPONSAVEL acompanando)
     // compartilham a contagem — é o aluno que entrou hoje, por qual porta vier.
     // Conta PESSOAS distintas: a mesma matrícula pode gerar vários registros
     // no dia (ida/saída, van + portaria) e o card mostra quem está de fato.
     const totalAlunos = await c.env.DB.prepare(
       `SELECT COUNT(DISTINCT pessoa_id) as total FROM registros_entrada 
-       WHERE tipo <> 'PROFESSOR' AND DATE(data_hora) = DATE('now')`
+       WHERE tipo <> 'PROFESSOR' AND DATE(data_hora) = '${hoje}'`
     ).first<{ total: number }>();
 
     const totalProfessores = await c.env.DB.prepare(
       `SELECT COUNT(DISTINCT pessoa_id) as total FROM registros_entrada 
-       WHERE tipo = 'PROFESSOR' AND DATE(data_hora) = DATE('now')`
+       WHERE tipo = 'PROFESSOR' AND DATE(data_hora) = '${hoje}'`
     ).first<{ total: number }>();
 
     // Já fizeram check-out hoje (verificação de saída) — pessoas distintas
     const alunosCheckout = await c.env.DB.prepare(
       `SELECT COUNT(DISTINCT pessoa_id) as total FROM registros_entrada 
        WHERE movimento = 'CHECKOUT' AND tipo <> 'PROFESSOR' AND pessoa_id IS NOT NULL
-         AND DATE(data_hora) = DATE('now')`
+         AND DATE(data_hora) = '${hoje}'`
     ).first<{ total: number }>();
 
     const professoresCheckout = await c.env.DB.prepare(
       `SELECT COUNT(DISTINCT pessoa_id) as total FROM registros_entrada 
        WHERE movimento = 'CHECKOUT' AND tipo = 'PROFESSOR' AND pessoa_id IS NOT NULL
-         AND DATE(data_hora) = DATE('now')`
+         AND DATE(data_hora) = '${hoje}'`
     ).first<{ total: number }>();
 
     // Detalhe dos cards clicáveis: quem são as pessoas por trás de cada número.
@@ -1618,7 +1682,7 @@ app.get("/api/diretoria/dashboard", async (c) => {
        FROM registros_entrada r
        LEFT JOIN alunos a ON a.id = r.pessoa_id
        WHERE r.tipo <> 'PROFESSOR' AND r.pessoa_id IS NOT NULL
-         AND DATE(r.data_hora) = DATE('now')
+         AND DATE(r.data_hora) = '${hoje}'
        GROUP BY r.pessoa_id, COALESCE(a.nome, r.nome), COALESCE(a.serie, '')
        ORDER BY serie, nome`
     ).all();
@@ -1629,7 +1693,7 @@ app.get("/api/diretoria/dashboard", async (c) => {
        FROM registros_entrada r
        LEFT JOIN alunos a ON a.id = r.pessoa_id
        WHERE r.tipo <> 'PROFESSOR' AND r.movimento = 'CHECKOUT'
-         AND r.pessoa_id IS NOT NULL AND DATE(r.data_hora) = DATE('now')
+         AND r.pessoa_id IS NOT NULL AND DATE(r.data_hora) = '${hoje}'
        GROUP BY r.pessoa_id, COALESCE(a.nome, r.nome), COALESCE(a.serie, '')
        ORDER BY serie, nome`
     ).all();
@@ -1638,7 +1702,7 @@ app.get("/api/diretoria/dashboard", async (c) => {
       `SELECT r.nome, MAX(r.detalhe) as materia, MIN(TIME(r.data_hora)) as hora
        FROM registros_entrada r
        WHERE r.tipo = 'PROFESSOR' AND r.pessoa_id IS NOT NULL
-         AND DATE(r.data_hora) = DATE('now')
+         AND DATE(r.data_hora) = '${hoje}'
        GROUP BY r.pessoa_id, r.nome
        ORDER BY r.nome`
     ).all();
@@ -1647,7 +1711,7 @@ app.get("/api/diretoria/dashboard", async (c) => {
       `SELECT r.nome, MAX(r.detalhe) as materia, MAX(TIME(r.data_hora)) as hora
        FROM registros_entrada r
        WHERE r.tipo = 'PROFESSOR' AND r.movimento = 'CHECKOUT'
-         AND r.pessoa_id IS NOT NULL AND DATE(r.data_hora) = DATE('now')
+         AND r.pessoa_id IS NOT NULL AND DATE(r.data_hora) = '${hoje}'
        GROUP BY r.pessoa_id, r.nome
        ORDER BY r.nome`
     ).all();
@@ -1658,7 +1722,7 @@ app.get("/api/diretoria/dashboard", async (c) => {
               COUNT(DISTINCT r.pessoa_id) as quantidade
        FROM registros_entrada r
        LEFT JOIN alunos a ON a.id = r.pessoa_id
-       WHERE r.tipo <> 'PROFESSOR' AND DATE(r.data_hora) = DATE('now')
+       WHERE r.tipo <> 'PROFESSOR' AND DATE(r.data_hora) = '${hoje}'
        GROUP BY CASE WHEN COALESCE(a.serie, '') = '' THEN 'Sem série' ELSE a.serie END
        ORDER BY quantidade DESC`
     ).all();
@@ -1666,14 +1730,14 @@ app.get("/api/diretoria/dashboard", async (c) => {
     const professoresPresentes = await c.env.DB.prepare(
       `SELECT nome, detalhe as materia, TIME(data_hora) as hora_entrada 
        FROM registros_entrada 
-       WHERE tipo = 'PROFESSOR' AND DATE(data_hora) = DATE('now')
+       WHERE tipo = 'PROFESSOR' AND DATE(data_hora) = '${hoje}'
        ORDER BY data_hora DESC`
     ).all();
 
     const ultimosRegistros = await c.env.DB.prepare(
       `SELECT id, nome, tipo, detalhe, metodo_validacao, movimento, TIME(data_hora) as hora 
        FROM registros_entrada 
-       WHERE DATE(data_hora) = DATE('now')
+       WHERE DATE(data_hora) = '${hoje}'
        ORDER BY id DESC LIMIT 20`
     ).all();
 

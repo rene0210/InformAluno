@@ -43,6 +43,32 @@ const login = async (email, senha = SENHA) => {
 
 const ehMovimento = (m) => m === "CHECKIN" || m === "CHECKOUT";
 
+// Relógio de Brasília (America/Sao_Paulo) no MESMO formato que a API grava em
+// data_hora. Serve para provar que o registro não está em UTC: gravado em UTC
+// a hora sairia 3h adiantada e este confronto falharia.
+const brasilia = () => {
+  const partes = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date());
+  const g = (tipo) => (partes.find((p) => p.type === tipo) || {}).value || "00";
+  const hora = g("hour") === "24" ? "00" : g("hour");
+  return `${g("year")}-${g("month")}-${g("day")} ${hora}:${g("minute")}:${g("second")}`;
+};
+
+const segundos = (hhmmss) => {
+  const [h, m, s] = String(hhmmss || "0:0:0").split(":").map(Number);
+  return (h || 0) * 3600 + (m || 0) * 60 + (s || 0);
+};
+
+const ehDataHoraBrasilia = (v) => /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(v || "");
+
 const main = async () => {
   // ---------- ADMIN: repoe senhas do elenco (auto-cura) ----------
   // A UI do /admin permite redefinir senha e muda o valor do cast;
@@ -140,6 +166,17 @@ const main = async () => {
   });
   const mov1 = r.data ? r.data.movimento : null;
   check("1º registro da portaria -> 201 com movimento", r.status === 201 && ehMovimento(mov1), `HTTP ${r.status} mov=${mov1}`);
+  const dataHora1 = r.data ? r.data.dataHora : null;
+  check(
+    "Resposta devolve a data/hora gravada (Brasilia)",
+    ehDataHoraBrasilia(dataHora1),
+    dataHora1 || "sem dataHora"
+  );
+  check(
+    "Data gravada é o DIA corrente de Brasilia",
+    !!dataHora1 && dataHora1.slice(0, 10) === brasilia().slice(0, 10),
+    `${dataHora1} x ${brasilia()}`
+  );
 
   r = await req("POST", "/api/portaria/registrar-entrada", {
     token: portaria.token,
@@ -151,6 +188,12 @@ const main = async () => {
     r.status === 201 && ehMovimento(mov2) && mov2 !== mov1,
     `1=${mov1} 2=${mov2}`
   );
+  const dataHora2 = r.data ? r.data.dataHora : null;
+  check(
+    "2º registro tambem devolve data/hora",
+    ehDataHoraBrasilia(dataHora2),
+    dataHora2 || "sem dataHora"
+  );
 
   // ---------- VAN: devolve o movimento ----------
   r = await req("POST", "/api/van/registrar", {
@@ -161,6 +204,19 @@ const main = async () => {
     "Van devolve movimento junto da validação facial",
     r.status === 201 && ehMovimento(r.data ? r.data.movimento : null),
     `HTTP ${r.status} mov=${r.data ? r.data.movimento : "?"}`
+  );
+  const dataHoraVan = r.data ? r.data.dataHora : null;
+  check(
+    "Van devolve a data/hora gravada (Brasilia)",
+    ehDataHoraBrasilia(dataHoraVan),
+    dataHoraVan || "sem dataHora"
+  );
+  check(
+    "Mensagem (dia/hora do aviso) bate com o horario gravado",
+    !!dataHoraVan &&
+      typeof r.data.quando === "string" &&
+      r.data.quando.includes(dataHoraVan.slice(11, 16)),
+    `${r.data && r.data.quando ? r.data.quando : "?"} x ${dataHoraVan || "?"}`
   );
 
   // ---------- PROFESSOR: cadastra foto e entra no reconhecimento ----------
@@ -202,6 +258,28 @@ const main = async () => {
     r.status === 200 &&
     ((r.data && r.data.ultimosRegistros) || []).some((reg) => ehMovimento(reg.movimento));
   check("Feed da diretoria traz movimento por registro", temMovimento);
+
+  // ---------- FIDEDIGNIDADE DA DATA/HORA (Brasília, nunca UTC) ----------
+  const feed = (r.data && r.data.ultimosRegistros) || [];
+  const horasDoFeed = feed
+    .filter((x) => x.nome === "Aluno Smoke Checkin")
+    .map((x) => x.hora)
+    .join(",");
+  check(
+    "Feed mostra EXATAMENTE a hora que a API devolveu",
+    !!dataHora2 && feed.some((reg) => reg.nome === "Aluno Smoke Checkin" && reg.hora === dataHora2.slice(11)),
+    `feed=[${horasDoFeed}] x resposta=${dataHora2 || "?"}`
+  );
+  const agoraBrt = brasilia();
+  check(
+    "Hora do feed bate com o relogio de Brasilia (sem +3h de UTC)",
+    feed.some(
+      (reg) =>
+        reg.nome === "Aluno Smoke Checkin" &&
+        Math.abs(segundos(reg.hora) - segundos(agoraBrt.slice(11))) <= 180
+    ),
+    `agora=${agoraBrt.slice(11)} feed=[${horasDoFeed}]`
+  );
 
   console.log(
     `\nSMOKE CHECKIN/CHECKOUT: ${falhas === 0 ? "TUDO VERDE" : "COM FALHAS"} - ${falhas} FAIL`
