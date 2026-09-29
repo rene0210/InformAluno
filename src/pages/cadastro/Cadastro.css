@@ -22,6 +22,44 @@ body {
   border-bottom: 2px solid #334155;
 }
 
+/* --- Barra superior em tela de celular -----------------------------
+   Medido no Chrome headless (CDP) entre 280px e 414px:
+
+   1) Abaixo de 992px o Bootstrap força .navbar-nav em
+      flex-direction: column. Como os 7 navbar do projeto foram escritos
+      como "ms-auto d-flex align-items-center" (linhas), os botões caíam
+      empilhados em linhas separadas e a barra virava 3 andares.
+
+   2) .navbar-brand é white-space: nowrap; em aparelhos com menos de
+      ~290px o texto "| Portal de Acesso" era cortado na borda direita.
+
+   Abaixo a nav vira linha com quebra automática (os dois botões lado a
+   lado quando couberem; um embaixo do outro, alinhados à direita, quando
+   não couberem) e a marca passa a quebrar linha em vez de estourar. */
+@media (max-width: 991.98px) {
+  .portaria-navbar .navbar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .portaria-navbar .navbar-brand {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Red de segurança para texto ampliado (configuração de fonte grande do
+     celular): o .btn é white-space: nowrap e não encolhe. Com normal, se o
+     rótulo sozinho não couber na linha ele quebra em duas em vez de ser
+     cortado pela borda da tela. */
+  .portaria-navbar .btn {
+    white-space: normal;
+  }
+}
+
 .status-indicator {
   display: inline-block;
   width: 8px;

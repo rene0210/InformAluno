@@ -174,11 +174,16 @@ export const Home: React.FC = () => {
       </Navbar>
 
       {/* --- CONTEÚDO PRINCIPAL --- */}
-      <Container className="my-auto py-5">
+      {/* px-4: o .container do Bootstrap 5.3 tem padding = metade do gutter
+          padrão (12px), mas esta Row usa g-5 (margem -24px) — sobravam 12px
+          de rolagem horizontal e a tela "saía do enquadro" no celular.
+          Com 24px o meio-gutter do g-5 casa exato e a página passa a ter a
+          mesma margem da barra superior (px-4). */}
+      <Container className="my-auto py-5 px-4">
         <Row className="align-items-center justify-content-center g-5">
           {/* Apresentação do Sistema */}
           <Col lg={6} className="text-center text-lg-start">
-            <Badge bg="primary" className="mb-3 px-3 py-2 fs-6">
+            <Badge bg="primary" className="mb-3 px-3 py-2 fs-6 text-wrap">
               Segurança & Biometria Escolar
             </Badge>
             <h1 className="fw-bold display-5 text-dark mb-3">
