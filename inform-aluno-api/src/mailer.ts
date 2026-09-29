@@ -13,7 +13,8 @@
 //   chamado por fetch puro — aqui roda dentro do Worker do Cloudflare e
 //   um pacote a menos no bundle. A API é idêntica.
 //
-// SMTP (fallback — usado quando NÃO há chave da Resend):
+// SMTP (fallback — usado quando NÃO há chave da Resend, e também quando a
+// Resend RECUSA o destinatário; ver `notificar` no fim do arquivo):
 //   SMTP_HOST=smtp.gmail.com
 //   SMTP_PORT=465            465 = TLS direto | 587 = STARTTLS
 //   SMTP_USER=seu.email@gmail.com
@@ -55,6 +56,8 @@ export interface ResultadoEnvio {
   error?: string;
   /** Prova do envio: id retornado pela Resend ou nada no SMTP. */
   detalhe?: string;
+  /** Qual transporte de fato entregou (pode diferir do configurado). */
+  transporte?: "resend" | "smtp" | "log";
 }
 
 export interface ResendConfig {
@@ -390,29 +393,56 @@ export const notificar = async (
   const config = mailConfigFromEnv(env);
   if (!resend && !config) {
     console.log(`[EMAIL/LOG] Para: ${para.join(", ")} | Assunto: ${assunto}`);
-    return { ok: true, modo: "log" };
+    return { ok: true, modo: "log", transporte: "log" };
   }
 
-  try {
-    // Resend tem prioridade; SMTP fica como fallback sem chave.
-    if (resend) {
-      const id = await resendEnviar(resend, para, assunto, html);
+  // Ordem: Resend quando há chave, e o SMTP do Gmail como DEGRAU seguinte.
+  // A Resend em modo teste recusa qualquer destinatário que não seja o do
+  // dono da conta — sem este degrau o e-mail seria descartado em silêncio e
+  // o "esqueci a senha" de todo usuário cadastrado morreria sem aviso.
+  const etapas: Array<{ nome: "resend" | "smtp"; enviar: () => Promise<string | void> }> = [];
+  if (resend) {
+    etapas.push({ nome: "resend", enviar: () => resendEnviar(resend, para, assunto, html) });
+  }
+  if (config) {
+    etapas.push({
+      nome: "smtp",
+      enviar: async () => {
+        await smtpEnviar(config, para, assunto, html);
+      },
+    });
+  }
+
+  const falhas: string[] = [];
+  for (const etapa of etapas) {
+    try {
+      const prova = await etapa.enviar();
+      const base =
+        etapa.nome === "resend"
+          ? prova
+            ? `Resend id ${prova}`
+            : "Resend"
+          : "enviado via SMTP";
+      // Se chegou aqui por degrau, deixa explícito qual transporte pulou:
+      // o administrador precisa saber que a Resend ainda não cobre esse
+      // destinatário (conta em modo teste sem domínio verificado).
+      const detalhe = falhas.length ? `${base} (Resend recusou antes)` : base;
       console.log(
-        `[EMAIL/RESEND] Enviado para ${para.join(", ")} | ${assunto}${
-          id ? ` | id=${id}` : ""
+        `[EMAIL/${etapa.nome.toUpperCase()}] Enviado para ${para.join(", ")} | ${assunto}${
+          etapa.nome === "resend" && prova ? ` | id=${prova}` : ""
         }`
       );
-      return { ok: true, modo: "enviado", detalhe: id ? `Resend id ${id}` : "Resend" };
+      return { ok: true, modo: "enviado", transporte: etapa.nome, detalhe };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      falhas.push(`${etapa.nome}: ${msg}`);
+      console.warn(`[EMAIL] ${etapa.nome} falhou em "${assunto}": ${msg}`);
     }
-
-    await smtpEnviar(config as MailConfig, para, assunto, html);
-    console.log(`[EMAIL] Enviado para ${para.join(", ")} | ${assunto}`);
-    return { ok: true, modo: "enviado" };
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error(`[EMAIL] Falha ao enviar "${assunto}": ${msg}`);
-    return { ok: false, modo: "log", error: msg };
   }
+
+  const erro = falhas.join(" | ");
+  console.error(`[EMAIL] Falha ao enviar "${assunto}": ${erro}`);
+  return { ok: false, modo: "log", error: erro };
 };
 
 // Teste de conectividade: conecta, lê a saudação (220) e sai.

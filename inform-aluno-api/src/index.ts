@@ -3833,21 +3833,28 @@ app.post("/api/admin/testar-email", async (c) => {
 
     // Prova do envio: na Resend a chave é do tipo "só envia" (não existe
     // endpoint de ping), então a prova é o próprio envio; no SMTP, a
-    // saudação (220) do servidor.
-    const conexao = resend
-      ? envio.modo === "enviado"
-        ? { ok: true, detalhe: envio.detalhe || "Resend aceitou o envio" }
-        : { ok: false, detalhe: envio.error || "Resend não enviou" }
-      : await testarConexaoSMTP(
-          config ? config.host : "smtp.gmail.com",
-          config ? config.port : 465
-        );
+    // saudação (220) do servidor — mas quando a mensagem já saiu, a prova
+    // é ela mesma (o `detalhe` vem de `notificar`).
+    const conexao =
+      envio.modo === "enviado"
+        ? {
+            ok: true,
+            detalhe:
+              envio.detalhe ||
+              (envio.transporte === "smtp" ? "enviado via SMTP" : "Resend aceitou o envio"),
+          }
+        : resend
+        ? { ok: false, detalhe: envio.error || "Resend não enviou" }
+        : await testarConexaoSMTP(
+            config ? config.host : "smtp.gmail.com",
+            config ? config.port : 465
+          );
 
     return c.json(
       {
         success: true,
         configurado,
-        transporte: resend ? "resend" : config ? "smtp" : "log",
+        transporte: envio.transporte || (resend ? "resend" : config ? "smtp" : "log"),
         modo: envio.modo,
         erro: envio.error || null,
         detalhe: envio.detalhe || null,
@@ -3857,7 +3864,9 @@ app.post("/api/admin/testar-email", async (c) => {
         message: !configurado
           ? "Sem credencial de e-mail (RESEND_API_KEY ou SMTP_*): e-mail registrado em modo log. Preencha o .dev.vars."
           : envio.modo === "enviado"
-          ? `E-mail de teste enviado para ${destino}.`
+          ? `E-mail de teste enviado para ${destino}${
+              envio.transporte ? ` (via ${envio.transporte})` : ""
+            }.`
           : `Falha no envio: ${envio.error}`,
       },
       200
