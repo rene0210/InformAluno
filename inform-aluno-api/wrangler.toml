@@ -3,15 +3,22 @@ main = "src/index.ts"
 compatibility_date = "2026-06-24"
 
 # ============================================================
-# DEPLOY EM PRODUÇÃO:
-#   1) npx wrangler d1 create inform-aluno-db   (ja feito — id abaixo)
+# PRODUÇÃO — já publicada:
+#   API   https://inform-aluno-api.inform-aluno.workers.dev
+#   D1    inform-aluno-db  (resolvido pelo NOME — não precisa de id)
+#
+#   1) npm run deploy                            publica o Worker
 #   2) npx wrangler d1 execute inform-aluno-db --remote --file schema.sql
-#   3) npm run deploy  (de inform-aluno-api)
-#   4) npx wrangler secret put <NOME>  (RESEND_API_KEY, EMAIL_FROM,
-#      APP_URL, CORS_ORIGINS — ver README)
+#   3) npx wrangler secret put <NOME>            lista no README
+#
+#   ⚠️  NÃO adicione `database_id` embaixo: o wrangler usa esse valor
+#   como CHAVE do D1 local (.wrangler/state/v3/d1). Trocar o id faz o
+#   `wrangler dev` apontar para um banco novo e vazio e o smoke inteiro
+#   passa a falhar com "D1_ERROR: no such table: usuarios" (os dados
+#   continuam lá, só ficam inacessíveis). O remoto é resolvido pelo
+#   database_name, então o id é dispensável — e o deploy abaixo prova.
 # ============================================================
 
 [[d1_databases]]
 binding = "DB"
 database_name = "inform-aluno-db"
-database_id = "d3fb70bd-d4fe-4c5d-b721-445cf3878643"
