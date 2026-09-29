@@ -5,7 +5,7 @@
 // (copie de .dev.vars.example e preencha); em produção use
 // `wrangler secret put RESEND_API_KEY` / `SMTP_PASS` etc.
 //
-// RESEND (preferido quando RESEND_API_KEY existe):
+// RESEND (1º degrau — preferido quando RESEND_API_KEY existe):
 //   RESEND_API_KEY=re_...          chave da conta (https://resend.com/api-keys)
 //   RESEND_FROM=InformAluno <onboarding@resend.dev>
 //
@@ -13,8 +13,22 @@
 //   chamado por fetch puro — aqui roda dentro do Worker do Cloudflare e
 //   um pacote a menos no bundle. A API é idêntica.
 //
-// SMTP (fallback — usado quando NÃO há chave da Resend, e também quando a
-// Resend RECUSA o destinatário; ver `notificar` no fim do arquivo):
+//   ATENÇÃO: conta em modo teste só entrega para o e-mail do dono da
+//   conta. Sem domínio verificado a Resend recusa (HTTP 403) qualquer
+//   terceiro — por isso a escada tem o degrau seguinte.
+//
+// BREVO (2º degrau — NÃO exige domínio, só confirmar um ENDEREÇO):
+//   BREVO_API_KEY=...              chave v3 (brevo.com -> SMTP & API -> API Keys)
+//   BREVO_FROM=InformAluno <seu.email@gmail.com>
+//
+//   Plano livre e permanente: 300 e-mails/dia, sem cartão de crédito. O
+//   remetente é liberado em Settings -> Senders & IPs -> Senders, que
+//   manda um link de confirmação para o próprio e-mail — não há registro
+//   DNS, SPF/DKIM ou domínio nenhum. É este degrau que faz os e-mails
+//   oficiais (criação e acesso) chegarem a qualquer usuário cadastrado.
+//
+// SMTP (último degrau — usado quando os anteriores RECUSAM o destinatário;
+// ver `notificar` no fim do arquivo):
 //   SMTP_HOST=smtp.gmail.com
 //   SMTP_PORT=465            465 = TLS direto | 587 = STARTTLS
 //   SMTP_USER=seu.email@gmail.com
@@ -22,7 +36,7 @@
 //   EMAIL_FROM=InformAluno Secretaria <seu.email@gmail.com>
 //   APP_URL=http://localhost:5173
 //
-// SEM credencial nenhuma das duas tudo roda em MODO LOG: o conteúdo é
+// SEM credencial de nenhum deles tudo roda em MODO LOG: o conteúdo é
 // impresso no console e nenhuma operação do sistema falha por causa disso.
 // As notificações NUNCA quebram o fluxo principal.
 // ============================================================
@@ -36,6 +50,8 @@ export interface MailEnv {
   SMTP_PASS?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
+  BREVO_API_KEY?: string;
+  BREVO_FROM?: string;
   EMAIL_FROM?: string;
   APP_URL?: string;
 }
@@ -50,19 +66,28 @@ export interface MailConfig {
   fromAddress: string;
 }
 
+/** Quem de fato aceitou a mensagem (pode diferir do configurado). */
+export type TransporteEnvio = "resend" | "brevo" | "smtp";
+
 export interface ResultadoEnvio {
   ok: boolean;
   modo: "enviado" | "log" | "sem-destinatario";
   error?: string;
-  /** Prova do envio: id retornado pela Resend ou nada no SMTP. */
+  /** Prova do envio: id devolvido pelo provedor ou "enviado via SMTP". */
   detalhe?: string;
   /** Qual transporte de fato entregou (pode diferir do configurado). */
-  transporte?: "resend" | "smtp" | "log";
+  transporte?: TransporteEnvio | "log";
 }
 
 export interface ResendConfig {
   apiKey: string;
   from: string;
+}
+
+export interface BrevoConfig {
+  apiKey: string;
+  nome: string;
+  de: string;
 }
 
 // ------------------------------------------------------------
@@ -102,6 +127,24 @@ export const resendFromEnv = (env: MailEnv): ResendConfig | null => {
   if (!from) return null;
 
   return { apiKey, from };
+};
+
+// Brevo — presente a chave, entra como degrau ENTRE a Resend e o SMTP.
+// O remetente precisa estar confirmado no painel do Brevo (confirmação por
+// link, sem domínio); a API recusa com "unverified" quem não estiver.
+export const brevoFromEnv = (env: MailEnv): BrevoConfig | null => {
+  const apiKey = (env.BREVO_API_KEY || "").trim();
+  if (!apiKey) return null;
+
+  const from = (env.BREVO_FROM || env.EMAIL_FROM || env.SMTP_USER || "").trim();
+  if (!from) return null;
+
+  // "Nome <endereco>" -> { nome, de }; endereço cru -> nome padrão.
+  const casado = from.match(/^([^<>]*?)\s*<([^<>]+)>$/);
+  const nome = casado ? casado[1].trim() || "InformAluno" : "InformAluno";
+  const de = casado ? casado[2].trim() : from;
+
+  return { apiKey, nome, de };
 };
 
 // ------------------------------------------------------------
@@ -281,6 +324,53 @@ const resendEnviar = async (
 // então a prova é o próprio envio: `notificar` devolve o id da mensagem.
 
 // ------------------------------------------------------------
+// Brevo (API HTTP — plano livre sem domínio)
+// ------------------------------------------------------------
+
+const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
+
+// Contrato da API v3: autenticação pelo header `api-key` (NÃO é Bearer),
+// remetente em `sender`, corpo em `htmlContent`. 201 = aceito, devolvendo
+// um `messageId` que serve de prova — mesmo papel do id da Resend.
+const brevoEnviar = async (
+  config: BrevoConfig,
+  destinatarios: string[],
+  assunto: string,
+  html: string
+): Promise<string> => {
+  const resposta = await fetch(BREVO_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "api-key": config.apiKey,
+      "Content-Type": "application/json",
+      accept: "application/json",
+    },
+    body: JSON.stringify({
+      sender: { name: config.nome, email: config.de },
+      to: destinatarios.map((email) => ({ email })),
+      subject: assunto,
+      htmlContent: html,
+    }),
+  });
+
+  const corpo = (await resposta.json().catch(() => ({}))) as {
+    messageId?: string;
+    message?: string;
+    code?: string;
+  };
+
+  if (!resposta.ok) {
+    throw new Error(
+      `Brevo recusou (HTTP ${resposta.status}): ${
+        corpo.message || corpo.code || "sem detalhe"
+      }`
+    );
+  }
+
+  return corpo.messageId ? `Brevo id ${corpo.messageId}` : "Brevo aceitou o envio";
+};
+
+// ------------------------------------------------------------
 // Protocolo SMTP completo
 // ------------------------------------------------------------
 
@@ -390,25 +480,44 @@ export const notificar = async (
   }
 
   const resend = resendFromEnv(env);
+  const brevo = brevoFromEnv(env);
   const config = mailConfigFromEnv(env);
-  if (!resend && !config) {
+  if (!resend && !brevo && !config) {
     console.log(`[EMAIL/LOG] Para: ${para.join(", ")} | Assunto: ${assunto}`);
     return { ok: true, modo: "log", transporte: "log" };
   }
 
-  // Ordem: Resend quando há chave, e o SMTP do Gmail como DEGRAU seguinte.
-  // A Resend em modo teste recusa qualquer destinatário que não seja o do
-  // dono da conta — sem este degrau o e-mail seria descartado em silêncio e
-  // o "esqueci a senha" de todo usuário cadastrado morreria sem aviso.
-  const etapas: Array<{ nome: "resend" | "smtp"; enviar: () => Promise<string | void> }> = [];
+  // Escada de degraus: Resend -> Brevo -> SMTP.
+  // * A Resend em modo teste recusa qualquer destinatário que não seja o
+  //   dono da conta (sem domínio verificado o erro é HTTP 403).
+  // * O Brevo NÃO exige domínio — basta confirmar um endereço de remetente
+  //   no painel — e é ele que leva os e-mails oficiais (criação e acesso)
+  //   a qualquer usuário cadastrado.
+  // * O SMTP do Gmail é a última rede de segurança: sem nenhum degrau o
+  //   e-mail seria descartado em silêncio e o "esqueci a senha" de todo
+  //   usuário morreria sem aviso.
+  const etapas: Array<{ nome: TransporteEnvio; enviar: () => Promise<string> }> = [];
   if (resend) {
-    etapas.push({ nome: "resend", enviar: () => resendEnviar(resend, para, assunto, html) });
+    etapas.push({
+      nome: "resend",
+      enviar: async () => {
+        const id = await resendEnviar(resend, para, assunto, html);
+        return id ? `Resend id ${id}` : "Resend aceitou o envio";
+      },
+    });
+  }
+  if (brevo) {
+    etapas.push({
+      nome: "brevo",
+      enviar: () => brevoEnviar(brevo, para, assunto, html),
+    });
   }
   if (config) {
     etapas.push({
       nome: "smtp",
       enviar: async () => {
         await smtpEnviar(config, para, assunto, html);
+        return "enviado via SMTP";
       },
     });
   }
@@ -417,20 +526,14 @@ export const notificar = async (
   for (const etapa of etapas) {
     try {
       const prova = await etapa.enviar();
-      const base =
-        etapa.nome === "resend"
-          ? prova
-            ? `Resend id ${prova}`
-            : "Resend"
-          : "enviado via SMTP";
-      // Se chegou aqui por degrau, deixa explícito qual transporte pulou:
-      // o administrador precisa saber que a Resend ainda não cobre esse
-      // destinatário (conta em modo teste sem domínio verificado).
-      const detalhe = falhas.length ? `${base} (Resend recusou antes)` : base;
+      // Se a mensagem só saiu depois de degraus recusarem, deixa explícito
+      // quem pulou: o administrador precisa saber que a Resend ainda não
+      // cobre esse destinatário (conta em modo teste sem domínio verificado).
+      const detalhe = falhas.length
+        ? `${prova} (depois de falhar em: ${falhas.map((f) => f.split(":")[0]).join(", ")})`
+        : prova;
       console.log(
-        `[EMAIL/${etapa.nome.toUpperCase()}] Enviado para ${para.join(", ")} | ${assunto}${
-          etapa.nome === "resend" && prova ? ` | id=${prova}` : ""
-        }`
+        `[EMAIL/${etapa.nome.toUpperCase()}] Enviado para ${para.join(", ")} | ${assunto} | ${prova}`
       );
       return { ok: true, modo: "enviado", transporte: etapa.nome, detalhe };
     } catch (e) {

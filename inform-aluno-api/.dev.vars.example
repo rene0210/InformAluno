@@ -4,9 +4,10 @@
 # Copie este arquivo para ".dev.vars" (mesma pasta) e preencha.
 # O .dev.vars é local e NUNCA vai para o repositório.
 #
-# Prioridade: RESEND_API_KEY (Resend, API HTTP) > SMTP_* (Gmail).
-# Sem nenhuma das duas, tudo roda em MODO LOG (nada é enviado e
-# nenhum teste quebra).
+# Prioridade: RESEND_API_KEY (Resend) > BREVO_API_KEY (Brevo) > SMTP_*.
+# Sem nenhuma das três, tudo roda em MODO LOG (nada é enviado e nenhum
+# teste quebra). Cada uma é um degrau da mesma escada: se a anterior
+# RECUSAR o destinatário, o degrau seguinte assume — nada se perde.
 # ============================================================
 
 # --- Resend (recomendado) --------------------------------------------
@@ -18,7 +19,19 @@ RESEND_API_KEY=
 #   RESEND_FROM=InformAluno <notificacoes@seudominio.com>
 RESEND_FROM=InformAluno <onboarding@resend.dev>
 
-# --- SMTP (fallback: só é usado quando RESEND_API_KEY está vazio) -----
+# --- Brevo (2º degrau — NÃO precisa de domínio) ----------------------
+# Plano livre e permanente: 300 e-mails/dia, sem cartão de crédito.
+# 1) crie a conta em https://www.brevo.com;
+# 2) Settings -> Senders & IPs -> Senders -> Add Sender: informe o e-mail
+#    e clique no link de confirmação que chega nele (sem DNS, sem SPF/DKIM);
+# 3) Settings -> SMTP & API -> API Keys -> Generate -> copie a chave v3;
+# 4) cole aqui (produção: npx wrangler secret put BREVO_API_KEY).
+BREVO_API_KEY=
+# O remetente DEVE ser o endereço confirmado no passo 2:
+#   BREVO_FROM=InformAluno <seu.email@gmail.com>
+BREVO_FROM=
+
+# --- SMTP (último degrau: só é usado quando os anteriores RECUSAM) -----
 # Gmail: ative a verificação em duas etapas e gere uma "senha de app" em
 # https://myaccount.google.com/security -> Verificação em duas etapas ->
 # Senhas de app. Cole a senha de app em SMTP_PASS (sem espaços).

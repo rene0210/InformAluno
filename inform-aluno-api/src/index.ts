@@ -10,6 +10,7 @@ import {
   testarConexaoSMTP,
   mailConfigFromEnv,
   resendFromEnv,
+  brevoFromEnv,
 } from "./mailer";
 import {
   emailBoasVindas,
@@ -831,12 +832,15 @@ app.post("/api/recuperar-senha", async (c) => {
     const link = `${urlAplicacao(c.env)}/redefinir-senha/${token}`;
     console.log(`[RECUPERAÇÃO DE SENHA] Link para ${usuario.email}: ${link}`);
 
-    // Envio real (Resend ou SMTP). O link volta na resposta SOMENTE quando
-    // não há credencial nenhuma (modo log puro, dev local) — é o que
+    // Envio real (Resend, Brevo ou SMTP). O link volta na resposta SOMENTE
+    // quando não há credencial nenhuma (modo log puro, dev local) — é o que
     // mantém o fluxo de testes do front andando. Com credencial configurada
     // o link NUNCA sai na resposta, mesmo que o envio falhe: senão qualquer
     // um poderia pedir o reset de uma conta de terceiro e capturar o link.
-    const temTransporte = Boolean(resendFromEnv(c.env)) || Boolean(mailConfigFromEnv(c.env));
+    const temTransporte =
+      Boolean(resendFromEnv(c.env)) ||
+      Boolean(brevoFromEnv(c.env)) ||
+      Boolean(mailConfigFromEnv(c.env));
     await notificar(
       c.env,
       [usuario.email],
@@ -3810,7 +3814,8 @@ app.post("/api/admin/testar-email", async (c) => {
 
     const config = mailConfigFromEnv(c.env);
     const resend = resendFromEnv(c.env);
-    const configurado = Boolean(config) || Boolean(resend);
+    const brevo = brevoFromEnv(c.env);
+    const configurado = Boolean(config) || Boolean(resend) || Boolean(brevo);
 
     // Destino padrão: e-mail do próprio administrador logado
     let destino = informado;
@@ -3831,20 +3836,15 @@ app.post("/api/admin/testar-email", async (c) => {
       emailTeste()
     );
 
-    // Prova do envio: na Resend a chave é do tipo "só envia" (não existe
-    // endpoint de ping), então a prova é o próprio envio; no SMTP, a
-    // saudação (220) do servidor — mas quando a mensagem já saiu, a prova
-    // é ela mesma (o `detalhe` vem de `notificar`).
+    // Prova do envio: a Resend e o Brevo não têm endpoint de "ping"
+    // barato (as chaves são do tipo "só envia"), então a prova é o próprio
+    // envio — o `detalhe` vem de `notificar` com o id da mensagem. Sem
+    // credencial nenhuma resta sondar a saudação (220) do servidor SMTP.
     const conexao =
       envio.modo === "enviado"
-        ? {
-            ok: true,
-            detalhe:
-              envio.detalhe ||
-              (envio.transporte === "smtp" ? "enviado via SMTP" : "Resend aceitou o envio"),
-          }
-        : resend
-        ? { ok: false, detalhe: envio.error || "Resend não enviou" }
+        ? { ok: true, detalhe: envio.detalhe || "envio aceito pelo provedor" }
+        : configurado
+        ? { ok: false, detalhe: envio.error || "nenhum provedor aceitou o envio" }
         : await testarConexaoSMTP(
             config ? config.host : "smtp.gmail.com",
             config ? config.port : 465
@@ -3854,7 +3854,9 @@ app.post("/api/admin/testar-email", async (c) => {
       {
         success: true,
         configurado,
-        transporte: envio.transporte || (resend ? "resend" : config ? "smtp" : "log"),
+        transporte:
+          envio.transporte ||
+          (resend ? "resend" : brevo ? "brevo" : config ? "smtp" : "log"),
         modo: envio.modo,
         erro: envio.error || null,
         detalhe: envio.detalhe || null,
@@ -3862,7 +3864,7 @@ app.post("/api/admin/testar-email", async (c) => {
           ? `OK — ${conexao.detalhe}`
           : `FALHOU — ${conexao.detalhe}`,
         message: !configurado
-          ? "Sem credencial de e-mail (RESEND_API_KEY ou SMTP_*): e-mail registrado em modo log. Preencha o .dev.vars."
+          ? "Sem credencial de e-mail (RESEND_API_KEY, BREVO_API_KEY ou SMTP_*): e-mail registrado em modo log. Preencha o .dev.vars."
           : envio.modo === "enviado"
           ? `E-mail de teste enviado para ${destino}${
               envio.transporte ? ` (via ${envio.transporte})` : ""
