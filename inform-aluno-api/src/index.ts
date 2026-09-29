@@ -10,7 +10,7 @@ import {
   testarConexaoSMTP,
   mailConfigFromEnv,
   resendFromEnv,
-  brevoFromEnv,
+  smtp2goFromEnv,
 } from "./mailer";
 import {
   emailBoasVindas,
@@ -832,14 +832,14 @@ app.post("/api/recuperar-senha", async (c) => {
     const link = `${urlAplicacao(c.env)}/redefinir-senha/${token}`;
     console.log(`[RECUPERAÇÃO DE SENHA] Link para ${usuario.email}: ${link}`);
 
-    // Envio real (Resend, Brevo ou SMTP). O link volta na resposta SOMENTE
+    // Envio real (Resend, SMTP2GO ou SMTP). O link volta na resposta SOMENTE
     // quando não há credencial nenhuma (modo log puro, dev local) — é o que
     // mantém o fluxo de testes do front andando. Com credencial configurada
     // o link NUNCA sai na resposta, mesmo que o envio falhe: senão qualquer
     // um poderia pedir o reset de uma conta de terceiro e capturar o link.
     const temTransporte =
       Boolean(resendFromEnv(c.env)) ||
-      Boolean(brevoFromEnv(c.env)) ||
+      Boolean(smtp2goFromEnv(c.env)) ||
       Boolean(mailConfigFromEnv(c.env));
     await notificar(
       c.env,
@@ -3814,8 +3814,8 @@ app.post("/api/admin/testar-email", async (c) => {
 
     const config = mailConfigFromEnv(c.env);
     const resend = resendFromEnv(c.env);
-    const brevo = brevoFromEnv(c.env);
-    const configurado = Boolean(config) || Boolean(resend) || Boolean(brevo);
+    const smtp2go = smtp2goFromEnv(c.env);
+    const configurado = Boolean(config) || Boolean(resend) || Boolean(smtp2go);
 
     // Destino padrão: e-mail do próprio administrador logado
     let destino = informado;
@@ -3836,7 +3836,7 @@ app.post("/api/admin/testar-email", async (c) => {
       emailTeste()
     );
 
-    // Prova do envio: a Resend e o Brevo não têm endpoint de "ping"
+    // Prova do envio: a Resend e o SMTP2GO não têm endpoint de "ping"
     // barato (as chaves são do tipo "só envia"), então a prova é o próprio
     // envio — o `detalhe` vem de `notificar` com o id da mensagem. Sem
     // credencial nenhuma resta sondar a saudação (220) do servidor SMTP.
@@ -3856,7 +3856,7 @@ app.post("/api/admin/testar-email", async (c) => {
         configurado,
         transporte:
           envio.transporte ||
-          (resend ? "resend" : brevo ? "brevo" : config ? "smtp" : "log"),
+          (resend ? "resend" : smtp2go ? "smtp2go" : config ? "smtp" : "log"),
         modo: envio.modo,
         erro: envio.error || null,
         detalhe: envio.detalhe || null,
@@ -3864,7 +3864,7 @@ app.post("/api/admin/testar-email", async (c) => {
           ? `OK — ${conexao.detalhe}`
           : `FALHOU — ${conexao.detalhe}`,
         message: !configurado
-          ? "Sem credencial de e-mail (RESEND_API_KEY, BREVO_API_KEY ou SMTP_*): e-mail registrado em modo log. Preencha o .dev.vars."
+          ? "Sem credencial de e-mail (RESEND_API_KEY, SMTP2GO_API_KEY ou SMTP_*): e-mail registrado em modo log. Preencha o .dev.vars."
           : envio.modo === "enviado"
           ? `E-mail de teste enviado para ${destino}${
               envio.transporte ? ` (via ${envio.transporte})` : ""

@@ -17,15 +17,16 @@
 //   conta. Sem domínio verificado a Resend recusa (HTTP 403) qualquer
 //   terceiro — por isso a escada tem o degrau seguinte.
 //
-// BREVO (2º degrau — NÃO exige domínio, só confirmar um ENDEREÇO):
-//   BREVO_API_KEY=...              chave v3 (brevo.com -> SMTP & API -> API Keys)
-//   BREVO_FROM=InformAluno <seu.email@gmail.com>
+// SMTP2GO (2º degrau — NÃO exige domínio, só confirmar um ENDEREÇO):
+//   SMTP2GO_API_KEY=api-...       chave (smtp2go.com -> Sending -> API Keys)
+//   SMTP2GO_FROM=InformAluno <seu.email@gmail.com>
 //
-//   Plano livre e permanente: 300 e-mails/dia, sem cartão de crédito. O
-//   remetente é liberado em Settings -> Senders & IPs -> Senders, que
-//   manda um link de confirmação para o próprio e-mail — não há registro
-//   DNS, SPF/DKIM ou domínio nenhum. É este degrau que faz os e-mails
-//   oficiais (criação e acesso) chegarem a qualquer usuário cadastrado.
+//   Plano livre PERMANENTE: 1.000 e-mails/mês (200/dia), sem cartão de
+//   crédito. O remetente é liberado em Sending -> Verified Senders, que
+//   aceita um "single sender email" confirmado por link no próprio
+//   e-mail — não há registro DNS, SPF/DKIM ou domínio nenhum. É este
+//   degrau que faz os e-mails oficiais (criação e acesso) chegarem a
+//   qualquer usuário cadastrado.
 //
 // SMTP (último degrau — usado quando os anteriores RECUSAM o destinatário;
 // ver `notificar` no fim do arquivo):
@@ -50,8 +51,8 @@ export interface MailEnv {
   SMTP_PASS?: string;
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
-  BREVO_API_KEY?: string;
-  BREVO_FROM?: string;
+  SMTP2GO_API_KEY?: string;
+  SMTP2GO_FROM?: string;
   EMAIL_FROM?: string;
   APP_URL?: string;
 }
@@ -67,7 +68,7 @@ export interface MailConfig {
 }
 
 /** Quem de fato aceitou a mensagem (pode diferir do configurado). */
-export type TransporteEnvio = "resend" | "brevo" | "smtp";
+export type TransporteEnvio = "resend" | "smtp2go" | "smtp";
 
 export interface ResultadoEnvio {
   ok: boolean;
@@ -84,10 +85,9 @@ export interface ResendConfig {
   from: string;
 }
 
-export interface BrevoConfig {
+export interface Smtp2goConfig {
   apiKey: string;
-  nome: string;
-  de: string;
+  sender: string;
 }
 
 // ------------------------------------------------------------
@@ -129,22 +129,18 @@ export const resendFromEnv = (env: MailEnv): ResendConfig | null => {
   return { apiKey, from };
 };
 
-// Brevo — presente a chave, entra como degrau ENTRE a Resend e o SMTP.
-// O remetente precisa estar confirmado no painel do Brevo (confirmação por
-// link, sem domínio); a API recusa com "unverified" quem não estiver.
-export const brevoFromEnv = (env: MailEnv): BrevoConfig | null => {
-  const apiKey = (env.BREVO_API_KEY || "").trim();
+// SMTP2GO — presente a chave, entra como degrau ENTRE a Resend e o SMTP.
+// O remetente precisa estar confirmado no painel ("single sender email",
+// confirmação por link, sem domínio); a API recusa quem não estiver.
+export const smtp2goFromEnv = (env: MailEnv): Smtp2goConfig | null => {
+  const apiKey = (env.SMTP2GO_API_KEY || "").trim();
   if (!apiKey) return null;
 
-  const from = (env.BREVO_FROM || env.EMAIL_FROM || env.SMTP_USER || "").trim();
+  const from = (env.SMTP2GO_FROM || env.EMAIL_FROM || env.SMTP_USER || "").trim();
   if (!from) return null;
 
-  // "Nome <endereco>" -> { nome, de }; endereço cru -> nome padrão.
-  const casado = from.match(/^([^<>]*?)\s*<([^<>]+)>$/);
-  const nome = casado ? casado[1].trim() || "InformAluno" : "InformAluno";
-  const de = casado ? casado[2].trim() : from;
-
-  return { apiKey, nome, de };
+  // A API aceita "Nome <endereco>" ou o endereco cru em `sender`.
+  return { apiKey, sender: from };
 };
 
 // ------------------------------------------------------------
@@ -324,50 +320,58 @@ const resendEnviar = async (
 // então a prova é o próprio envio: `notificar` devolve o id da mensagem.
 
 // ------------------------------------------------------------
-// Brevo (API HTTP — plano livre sem domínio)
+// SMTP2GO (API HTTP — plano livre sem domínio)
 // ------------------------------------------------------------
 
-const BREVO_ENDPOINT = "https://api.brevo.com/v3/smtp/email";
+const SMTP2GO_ENDPOINT = "https://api.smtp2go.com/v3/email/send";
 
-// Contrato da API v3: autenticação pelo header `api-key` (NÃO é Bearer),
-// remetente em `sender`, corpo em `htmlContent`. 201 = aceito, devolvendo
-// um `messageId` que serve de prova — mesmo papel do id da Resend.
-const brevoEnviar = async (
-  config: BrevoConfig,
+// Contrato da API: a chave vai no header `X-Smtp2go-Api-Key`, o remetente
+// em `sender` (aceita "Nome <endereco>"), destinatários em `to` e o corpo
+// em `html_body`. HTTP 200 = aceito; o `email_id` de `data` é a prova —
+// mesmo papel do id da Resend.
+const smtp2goEnviar = async (
+  config: Smtp2goConfig,
   destinatarios: string[],
   assunto: string,
   html: string
 ): Promise<string> => {
-  const resposta = await fetch(BREVO_ENDPOINT, {
+  const resposta = await fetch(SMTP2GO_ENDPOINT, {
     method: "POST",
     headers: {
-      "api-key": config.apiKey,
+      "X-Smtp2go-Api-Key": config.apiKey,
       "Content-Type": "application/json",
       accept: "application/json",
     },
     body: JSON.stringify({
-      sender: { name: config.nome, email: config.de },
-      to: destinatarios.map((email) => ({ email })),
+      sender: config.sender,
+      to: destinatarios,
       subject: assunto,
-      htmlContent: html,
+      html_body: html,
     }),
   });
 
   const corpo = (await resposta.json().catch(() => ({}))) as {
-    messageId?: string;
+    data?: { error?: string; succeeded?: number; failed?: number; email_id?: string };
     message?: string;
-    code?: string;
   };
+  const dados = corpo.data || {};
 
   if (!resposta.ok) {
     throw new Error(
-      `Brevo recusou (HTTP ${resposta.status}): ${
-        corpo.message || corpo.code || "sem detalhe"
+      `SMTP2GO recusou (HTTP ${resposta.status}): ${
+        dados.error || corpo.message || "sem detalhe"
       }`
     );
   }
 
-  return corpo.messageId ? `Brevo id ${corpo.messageId}` : "Brevo aceitou o envio";
+  // 200 com tudo rejeitado ainda é falha: não houve envio nenhum.
+  if (dados.failed && dados.failed > 0 && !dados.succeeded) {
+    throw new Error(`SMTP2GO rejeitou os destinatários: ${dados.error || "sem detalhe"}`);
+  }
+
+  return dados.email_id
+    ? `SMTP2GO email_id ${dados.email_id}`
+    : `SMTP2GO aceitou (enviados: ${dados.succeeded ?? "?"})`;
 };
 
 // ------------------------------------------------------------
@@ -480,19 +484,19 @@ export const notificar = async (
   }
 
   const resend = resendFromEnv(env);
-  const brevo = brevoFromEnv(env);
+  const smtp2go = smtp2goFromEnv(env);
   const config = mailConfigFromEnv(env);
-  if (!resend && !brevo && !config) {
+  if (!resend && !smtp2go && !config) {
     console.log(`[EMAIL/LOG] Para: ${para.join(", ")} | Assunto: ${assunto}`);
     return { ok: true, modo: "log", transporte: "log" };
   }
 
-  // Escada de degraus: Resend -> Brevo -> SMTP.
+  // Escada de degraus: Resend -> SMTP2GO -> SMTP.
   // * A Resend em modo teste recusa qualquer destinatário que não seja o
   //   dono da conta (sem domínio verificado o erro é HTTP 403).
-  // * O Brevo NÃO exige domínio — basta confirmar um endereço de remetente
-  //   no painel — e é ele que leva os e-mails oficiais (criação e acesso)
-  //   a qualquer usuário cadastrado.
+  // * O SMTP2GO NÃO exige domínio — basta confirmar um endereço de
+  //   remetente no painel — e é ele que leva os e-mails oficiais (criação
+  //   e acesso) a qualquer usuário cadastrado. Conta livre de 1.000/mês.
   // * O SMTP do Gmail é a última rede de segurança: sem nenhum degrau o
   //   e-mail seria descartado em silêncio e o "esqueci a senha" de todo
   //   usuário morreria sem aviso.
@@ -506,10 +510,10 @@ export const notificar = async (
       },
     });
   }
-  if (brevo) {
+  if (smtp2go) {
     etapas.push({
-      nome: "brevo",
-      enviar: () => brevoEnviar(brevo, para, assunto, html),
+      nome: "smtp2go",
+      enviar: () => smtp2goEnviar(smtp2go, para, assunto, html),
     });
   }
   if (config) {

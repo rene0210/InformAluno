@@ -4,7 +4,7 @@
 # Copie este arquivo para ".dev.vars" (mesma pasta) e preencha.
 # O .dev.vars é local e NUNCA vai para o repositório.
 #
-# Prioridade: RESEND_API_KEY (Resend) > BREVO_API_KEY (Brevo) > SMTP_*.
+# Prioridade: RESEND_API_KEY (Resend) > SMTP2GO_API_KEY (SMTP2GO) > SMTP_*.
 # Sem nenhuma das três, tudo roda em MODO LOG (nada é enviado e nenhum
 # teste quebra). Cada uma é um degrau da mesma escada: se a anterior
 # RECUSAR o destinatário, o degrau seguinte assume — nada se perde.
@@ -19,17 +19,18 @@ RESEND_API_KEY=
 #   RESEND_FROM=InformAluno <notificacoes@seudominio.com>
 RESEND_FROM=InformAluno <onboarding@resend.dev>
 
-# --- Brevo (2º degrau — NÃO precisa de domínio) ----------------------
-# Plano livre e permanente: 300 e-mails/dia, sem cartão de crédito.
-# 1) crie a conta em https://www.brevo.com;
-# 2) Settings -> Senders & IPs -> Senders -> Add Sender: informe o e-mail
-#    e clique no link de confirmação que chega nele (sem DNS, sem SPF/DKIM);
-# 3) Settings -> SMTP & API -> API Keys -> Generate -> copie a chave v3;
-# 4) cole aqui (produção: npx wrangler secret put BREVO_API_KEY).
-BREVO_API_KEY=
+# --- SMTP2GO (2º degrau — NÃO precisa de domínio) ----------------------
+# Plano livre PERMANENTE: 1.000 e-mails/mês (200/dia), sem cartão de crédito.
+# 1) crie a conta em https://www.smtp2go.com (Sign Up Free);
+# 2) Sending -> Verified Senders -> Add -> Single sender email: informe o
+#    e-mail e clique no link de confirmação que chega nele (sem DNS, sem
+#    SPF/DKIM — é só o endereço);
+# 3) Sending -> API Keys -> Generate -> copie a chave (começa com api-);
+# 4) cole aqui (produção: npx wrangler secret put SMTP2GO_API_KEY).
+SMTP2GO_API_KEY=
 # O remetente DEVE ser o endereço confirmado no passo 2:
-#   BREVO_FROM=InformAluno <seu.email@gmail.com>
-BREVO_FROM=
+#   SMTP2GO_FROM=InformAluno <seu.email@gmail.com>
+SMTP2GO_FROM=
 
 # --- SMTP (último degrau: só é usado quando os anteriores RECUSAM) -----
 # Gmail: ative a verificação em duas etapas e gere uma "senha de app" em
@@ -54,8 +55,8 @@ APP_URL=http://localhost:5173
 # Outros provedores (altere SMTP_HOST/SMTP_PORT):
 #   Microsoft 365 / Outlook com SMTP AUTH habilitado:
 #     SMTP_HOST=smtp.office365.com  SMTP_PORT=587
-#   Brevo (brevo.com — Settings -> SMTP, usuário e senha próprios):
-#     SMTP_HOST=smtp-relay.brevo.com  SMTP_PORT=587
+#   SMTP2GO (smtp2go.com — Sending -> SMTP Credentials, usuário/senha):
+#     SMTP_HOST=smtp.smtp2go.com  SMTP_PORT=465
 #   Provedor de hospedagem (cPanel, Hostinger, etc.):
 #     SMTP_HOST=smtp.seudominio.com   SMTP_PORT=465 ou 587
 # ------------------------------------------------------------
