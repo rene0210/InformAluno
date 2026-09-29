@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Container,
   Card,
@@ -15,6 +15,7 @@ import {
 import { useLocation, useNavigate } from "react-router-dom";
 import { TermosModal, PrivacidadeModal } from "../../components/legaltermos";
 import { RegrasSenha } from "../../components/regrassenha";
+import { EVENTO_SESSAO_ENCERRADA } from "../../components/sessao";
 import "../cadastro/Cadastro.css";
 import { API } from "../../components/api";
 
@@ -45,6 +46,16 @@ export const Home: React.FC = () => {
   const [sucessoEsqueci, setSucessoEsqueci] = useState<string | null>(null);
   const [linkSimulado, setLinkSimulado] = useState<string | null>(null);
   const [enviandoEsqueci, setEnviandoEsqueci] = useState(false);
+
+  // MEDIDA DE SEGURANÇA — a senha digitada zera ao deslogar.
+  // O "Sair" e o timeout de inatividade chamam finalizarSessao(); se a tela
+  // de login já estiver montada nesse momento, o React NÃO remonta a rota e
+  // o valor sobreviveria na caixa. O evento garante a limpeza na hora.
+  useEffect(() => {
+    const limparSenha = () => setSenha("");
+    window.addEventListener(EVENTO_SESSAO_ENCERRADA, limparSenha);
+    return () => window.removeEventListener(EVENTO_SESSAO_ENCERRADA, limparSenha);
+  }, []);
 
   const abrirEsqueciSenha = () => {
     // Reseta o estado da caixa toda vez que abre
@@ -135,6 +146,9 @@ export const Home: React.FC = () => {
       setErro("Não foi possível conectar ao servidor. Verifique sua conexão.");
     } finally {
       setCarregando(false);
+      // MEDIDA DE SEGURANÇA — o campo zera DEPOIS DE CADA tentativa, certo
+      // ou errado: nada digitado fica na tela nem no estado do formulário.
+      setSenha("");
     }
   };
 
